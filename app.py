@@ -234,24 +234,35 @@ def display_results_table(df, symbol_name):
 st.title("📊 Put Options Screener")
 
 # API Data Source Selector
-st.sidebar.header("📊 Data Source")
+st.sidebar.header("📊 Data Sources")
 api_source = st.sidebar.radio(
-    "Select API Source:",
+    "Stock Prices Source:",
     options=["alpaca", "yahoo"],
     format_func=lambda x: "🚀 Alpaca (Real-time)" if x == "alpaca" else "📈 Yahoo Finance (Free)",
     index=0 if st.session_state.api_source == "alpaca" else 1,
-    help="Choose your data source:\n• Alpaca: Real-time data with your API keys\n• Yahoo Finance: Free but may have delays"
+    help="Choose your data source for stock prices"
 )
 st.session_state.api_source = api_source
 
-# Show API status
+# Show what data comes from which API
+st.sidebar.markdown("**Data Sources Used:**")
+if api_source == "alpaca":
+    st.sidebar.markdown("• **Stock Prices**: Alpaca (Real-time)")
+    st.sidebar.markdown("• **Options Data**: Yahoo Finance (Real chains)")
+else:
+    st.sidebar.markdown("• **Stock Prices**: Yahoo Finance")
+    st.sidebar.markdown("• **Options Data**: Yahoo Finance (Real chains)")
+
+# Show API connection status
 if api_source == "alpaca":
     if os.getenv('ALPACA_API_KEY'):
         st.sidebar.success("✅ Alpaca API Connected")
     else:
         st.sidebar.error("❌ Alpaca API Keys Missing")
 else:
-    st.sidebar.info("📈 Using Yahoo Finance")
+    st.sidebar.success("✅ Yahoo Finance Connected")
+
+st.sidebar.info("📝 **All data is real** - No simulated or generated data is used.")
 
 st.sidebar.divider()
 

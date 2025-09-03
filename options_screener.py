@@ -208,96 +208,95 @@ def get_options_chain_yahoo(symbol, config):
         print(f"Error getting Yahoo Finance options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
 
-def get_options_chain_alpaca(symbol, config, current_price=None):
-    """Generate simulated options chain since Alpaca doesn't provide options data in free tier"""
+def get_options_chain(symbol, config, api_source="alpaca"):
+    """Get real options chain data - always uses Yahoo Finance for options data since Alpaca requires premium tier for options"""
+    print(f"Fetching REAL options data for {symbol} from Yahoo Finance...")
+    
+    # Always use Yahoo Finance for options data since it provides real options chains
+    # Alpaca's options API requires premium subscription
     try:
-        # Get current stock price if not provided
-        if current_price is None:
-            current_price = get_stock_price_alpaca(symbol)
-        
+        stock = yf.Ticker(symbol)
         max_dte = config['options_strategy']['max_dte']
         min_dte = config['options_strategy'].get('min_dte', 0)
         
-        # Generate realistic options data
-        options_data = []
+        # Get expiry dates within DTE range
+        expiry_dates = [date for date in stock.options
+                       if min_dte <= (pd.to_datetime(date) - datetime.now()).days <= max_dte]
         
-        # Generate expiry dates within DTE range
-        base_date = datetime.now().date()
-        expiry_dates = []
-        for days in range(min_dte, max_dte + 1, 7):  # Weekly options
-            expiry_date = base_date + timedelta(days=days)
-            # Only add if it's a Friday (typical options expiry)
-            if expiry_date.weekday() == 4:  # Friday
-                expiry_dates.append(expiry_date.strftime('%Y-%m-%d'))
+        if not expiry_dates:
+            print(f"No options expiry dates found for {symbol} within DTE range {min_dte}-{max_dte} days")
+            return pd.DataFrame()
         
-        if not expiry_dates:  # Fallback if no Fridays found
-            expiry_dates = [(base_date + timedelta(days=min_dte + 7)).strftime('%Y-%m-%d')]
+        all_options = pd.DataFrame()
         
-        for expiry in expiry_dates:
-            dte = (datetime.strptime(expiry, '%Y-%m-%d').date() - base_date).days
-            
-            # Generate put options at various strike prices around current price
-            for strike_offset in [-30, -25, -20, -15, -10, -8, -5, -3, -1, 0, 1, 3, 5]:
-                strike = round(current_price + strike_offset, 2)
-                if strike <= 0:
+        for date in expiry_dates:
+            try:
+                chain = stock.option_chain(date)
+                puts = chain.puts
+                
+                # Skip if no puts data
+                if puts.empty:
                     continue
+                    
+                puts = puts.copy()  # Avoid SettingWithCopyWarning
+                puts['expiry'] = date
+                puts['dte'] = int((pd.to_datetime(date) - datetime.now()).days)
+                puts['symbol'] = symbol
                 
-                # Calculate realistic option metrics
-                moneyness = strike / current_price
-                time_to_expiry = dte / 365.0
+                # Calculate Greeks if not available (only for real data)
+                if 'delta' not in puts.columns:
+                    # Get current price for Greeks calculation
+                    if api_source.lower() == "yahoo":
+                        current_price = get_stock_price_yahoo(symbol)
+                    else:
+                        current_price = get_stock_price_alpaca(symbol)
+                    
+                    S = current_price
+                    K = puts['strike']
+                    T = puts['dte'] / 365
+                    r = 0.05  # Risk-free rate (approximate)
+                    sigma = puts['impliedVolatility']
+                    
+                    # Only calculate for valid data
+                    valid_mask = (T > 0) & (sigma > 0) & (K > 0) & (S > 0)
+                    
+                    # Black-Scholes delta calculation for puts (only real calculation, no simulation)
+                    d1 = np.where(valid_mask, 
+                                 (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T)), 
+                                 0)
+                    puts['delta'] = np.where(valid_mask, -norm.cdf(-d1), 0)
                 
-                # Simulate implied volatility (higher for OTM options)
-                if moneyness < 0.90:
-                    iv = 0.25 + (0.90 - moneyness) * 0.8  # Higher IV for deeper OTM
-                elif moneyness < 0.95:
-                    iv = 0.22 + (0.95 - moneyness) * 0.6
-                else:
-                    iv = 0.20
+                # Ensure all required columns are present (real data only)
+                if 'openInterest' in puts.columns:
+                    puts['open_interest'] = puts['openInterest']
+                elif 'open_interest' not in puts.columns:
+                    puts['open_interest'] = 0
                 
-                # Black-Scholes calculations
-                r = 0.05  # Risk-free rate
-                d1 = (np.log(current_price/strike) + (r + iv**2/2)*time_to_expiry) / (iv*np.sqrt(time_to_expiry))
-                d2 = d1 - iv*np.sqrt(time_to_expiry)
+                if 'volume' not in puts.columns:
+                    puts['volume'] = 0
                 
-                # Put option delta and price
-                delta = -norm.cdf(-d1)
-                put_price = strike * np.exp(-r*time_to_expiry) * norm.cdf(-d2) - current_price * norm.cdf(-d1)
-                put_price = max(0.05, put_price)  # Minimum price
+                # Only add options with real volume and open interest data
+                real_data_mask = (puts['volume'] >= 0) & (puts['open_interest'] >= 0) & (puts['lastPrice'] > 0)
+                puts = puts[real_data_mask]
                 
-                # Make prices more attractive for OTM puts
-                if strike < current_price * 0.95:  # OTM puts
-                    put_price = put_price * 1.5  # Increase premium for better returns
+                if not puts.empty:
+                    all_options = pd.concat([all_options, puts], ignore_index=True)
+                    print(f"Found {len(puts)} real put options for {symbol} expiring on {date}")
                 
-                # Simulate volume and open interest with better distributions
-                base_volume = max(5, int(150 * np.exp(-abs(strike_offset)/15)))
-                volume = max(5, np.random.poisson(base_volume))
-                open_interest = max(5, volume * np.random.randint(3, 15))
-                
-                options_data.append({
-                    'symbol': symbol,
-                    'strike': strike,
-                    'lastPrice': round(put_price, 2),
-                    'volume': volume,
-                    'openInterest': open_interest,
-                    'open_interest': open_interest,
-                    'impliedVolatility': round(iv, 4),
-                    'delta': round(delta, 4),
-                    'expiry': expiry,
-                    'dte': dte
-                })
+            except Exception as e:
+                print(f"Error processing real options data for {symbol} on {date}: {str(e)}")
+                continue
         
-        return pd.DataFrame(options_data)
+        if not all_options.empty:
+            print(f"Total {len(all_options)} REAL put options retrieved for {symbol}")
+        else:
+            print(f"No real options data found for {symbol}")
+            
+        return all_options
         
     except Exception as e:
-        print(f"Error generating simulated options chain for {symbol}: {str(e)}")
+        print(f"Error getting real options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
-
-def get_options_chain(symbol, config, api_source="alpaca"):
-    """Get options chain using selected API source"""
-    if api_source.lower() == "yahoo":
-        return get_options_chain_yahoo(symbol, config)
-    else:
-        return get_options_chain_alpaca(symbol, config)
 
 def calculate_metrics(options_chain, current_price):
     """Calculate additional metrics for options"""
