@@ -115,7 +115,6 @@ class AlpacaMCPClient:
                     expiration_date_gte=date.fromisoformat(expiry_start),
                     expiration_date_lte=date.fromisoformat(expiry_end),
                     status=AssetStatus.ACTIVE,  # Use enum
-                    contract_type=ContractType.PUT,  # Server-side PUT filtering
                     page_token=page_token,  # For pagination
                     limit=1000  # Max per request
                 )
@@ -128,6 +127,12 @@ class AlpacaMCPClient:
                     contract_symbol = getattr(contract, 'symbol', '')
                     if not contract_symbol:
                         continue
+                    
+                    # Filter for PUT contracts manually (server-side filtering not available)
+                    # PUT options end with P followed by strike (e.g., AAPL250919P00230000)
+                    # CALL options end with C followed by strike (e.g., AAPL250919C00230000)
+                    if not ('P0' in contract_symbol[-9:] or 'P1' in contract_symbol[-9:] or 'P2' in contract_symbol[-9:]):
+                        continue  # Skip if not a PUT option (look for P followed by digits in the strike portion)
                         
                     # Handle multiplier safely
                     multiplier_val = getattr(contract, 'multiplier', 100)
@@ -172,39 +177,68 @@ class AlpacaMCPClient:
             return []
     
     def get_option_quotes(self, symbols: List[str]) -> Dict[str, Any]:
-        """Get option quotes for multiple symbols"""
+        """Get option quotes for multiple symbols with chunking to handle API limits"""
         try:
-            request = OptionLatestQuoteRequest(symbol_or_symbols=symbols)
-            quotes_response = self.option_data_client.get_option_latest_quote(request)
+            if not symbols:
+                return {'success': False, 'error': 'No symbols provided', 'quotes': {}}
             
             quote_data = {}
-            # Handle the quotes response which is likely a dict-like object
-            quotes = getattr(quotes_response, 'quotes', quotes_response) if hasattr(quotes_response, 'quotes') else quotes_response
+            CHUNK_SIZE = 95  # Stay safely under the 100 symbol limit
             
-            if isinstance(quotes, dict):
-                for symbol in symbols:
-                    if symbol in quotes:
-                        quote = quotes[symbol]
-                        # Handle the quote object safely
-                        bid = float(getattr(quote, 'bid_price', 0) or 0)
-                        ask = float(getattr(quote, 'ask_price', 0) or 0)
-                        mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else 0
-                        
-                        quote_data[symbol] = {
-                            'bid_price': bid,
-                            'ask_price': ask,
-                            'mid_price': mid_price,
-                            'bid_size': getattr(quote, 'bid_size', 0) or 0,
-                            'ask_size': getattr(quote, 'ask_size', 0) or 0,
-                            'timestamp': getattr(quote, 'timestamp', None),
-                            'volume': getattr(quote, 'volume', 0) or 0  # Add volume if available
-                        }
+            # Process symbols in chunks
+            total_chunks = (len(symbols) + CHUNK_SIZE - 1) // CHUNK_SIZE
+            print(f"Processing {len(symbols)} symbols in {total_chunks} chunks of max {CHUNK_SIZE} symbols each")
+            
+            for i in range(0, len(symbols), CHUNK_SIZE):
+                chunk = symbols[i:i + CHUNK_SIZE]
+                chunk_num = (i // CHUNK_SIZE) + 1
+                
+                try:
+                    print(f"Getting quotes for chunk {chunk_num}/{total_chunks} ({len(chunk)} symbols)...")
+                    
+                    request = OptionLatestQuoteRequest(symbol_or_symbols=chunk)
+                    quotes_response = self.option_data_client.get_option_latest_quote(request)
+                    
+                    # Handle the quotes response which is likely a dict-like object
+                    quotes = getattr(quotes_response, 'quotes', quotes_response) if hasattr(quotes_response, 'quotes') else quotes_response
+                    
+                    if isinstance(quotes, dict):
+                        for symbol in chunk:
+                            if symbol in quotes:
+                                quote = quotes[symbol]
+                                # Handle the quote object safely
+                                bid = float(getattr(quote, 'bid_price', 0) or 0)
+                                ask = float(getattr(quote, 'ask_price', 0) or 0)
+                                mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else 0
+                                
+                                quote_data[symbol] = {
+                                    'bid_price': bid,
+                                    'ask_price': ask,
+                                    'mid_price': mid_price,
+                                    'bid_size': getattr(quote, 'bid_size', 0) or 0,
+                                    'ask_size': getattr(quote, 'ask_size', 0) or 0,
+                                    'timestamp': getattr(quote, 'timestamp', None),
+                                    'volume': getattr(quote, 'volume', 0) or 0
+                                }
+                    
+                    print(f"Chunk {chunk_num} completed: {len([s for s in chunk if s in quote_data])} quotes received")
+                    
+                except Exception as chunk_error:
+                    print(f"Error in chunk {chunk_num}: {str(chunk_error)}")
+                    continue  # Try next chunk
+            
+            total_quotes = len(quote_data)
+            success = total_quotes > 0
+            
+            print(f"Quote retrieval complete: {total_quotes}/{len(symbols)} quotes received")
             
             return {
-                'success': len(quote_data) > 0,
+                'success': success,
                 'quotes': quote_data,
-                'total_quotes': len(quote_data)
+                'total_quotes': total_quotes,
+                'requested_symbols': len(symbols)
             }
+            
         except Exception as e:
             print(f"Error getting option quotes: {str(e)}")
             return {'success': False, 'error': str(e), 'quotes': {}}
@@ -253,10 +287,10 @@ class AlpacaMCPClient:
                 contract_symbol = contract['symbol']
                 
                 # Get quote data
-                if contract_symbol not in option_quotes:
+                if contract_symbol not in option_quotes.get('quotes', {}):
                     continue
                 
-                quote = option_quotes[contract_symbol]
+                quote = option_quotes['quotes'][contract_symbol]
                 option_price = quote['mid_price']
                 
                 if option_price <= 0:
