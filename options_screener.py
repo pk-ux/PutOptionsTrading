@@ -208,95 +208,187 @@ def get_options_chain_yahoo(symbol, config):
         print(f"Error getting Yahoo Finance options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
 
-def get_options_chain(symbol, config, api_source="alpaca"):
-    """Get real options chain data - always uses Yahoo Finance for options data since Alpaca requires premium tier for options"""
-    print(f"Fetching REAL options data for {symbol} from Yahoo Finance...")
-    
-    # Always use Yahoo Finance for options data since it provides real options chains
-    # Alpaca's options API requires premium subscription
+def get_options_chain_alpaca(symbol, config):
+    """Get real options chain data from Alpaca API"""
     try:
-        stock = yf.Ticker(symbol)
+        print(f"Fetching REAL options data for {symbol} from Alpaca API...")
+        
+        api_key = os.getenv('ALPACA_API_KEY')
+        secret_key = os.getenv('ALPACA_SECRET_KEY')
+        
+        if not api_key or not secret_key:
+            print("Alpaca API keys not found")
+            return pd.DataFrame()
+        
+        headers = {
+            'APCA-API-KEY-ID': api_key,
+            'APCA-API-SECRET-KEY': secret_key,
+            'accept': 'application/json'
+        }
+        
         max_dte = config['options_strategy']['max_dte']
         min_dte = config['options_strategy'].get('min_dte', 0)
         
-        # Get expiry dates within DTE range
-        expiry_dates = [date for date in stock.options
-                       if min_dte <= (pd.to_datetime(date) - datetime.now()).days <= max_dte]
+        # Calculate date range for filtering
+        base_date = datetime.now().date()
+        min_exp_date = (base_date + timedelta(days=min_dte)).strftime('%Y-%m-%d')
+        max_exp_date = (base_date + timedelta(days=max_dte)).strftime('%Y-%m-%d')
         
-        if not expiry_dates:
-            print(f"No options expiry dates found for {symbol} within DTE range {min_dte}-{max_dte} days")
+        # First, get available option contracts within DTE range
+        contracts_url = 'https://paper-api.alpaca.markets/v2/options/contracts'
+        contracts_params = {
+            'underlying_symbols': symbol,
+            'type': 'put',  # We want put options
+            'status': 'active',
+            'expiration_date_gte': min_exp_date,
+            'expiration_date_lte': max_exp_date,
+            'limit': 1000
+        }
+        
+        print(f"Getting put contracts for {symbol} from {min_exp_date} to {max_exp_date}...")
+        contracts_response = requests.get(contracts_url, headers=headers, params=contracts_params)
+        
+        if contracts_response.status_code != 200:
+            print(f"Alpaca contracts API error {contracts_response.status_code}: {contracts_response.text}")
             return pd.DataFrame()
         
-        all_options = pd.DataFrame()
+        contracts_data = contracts_response.json()
+        contracts = contracts_data.get('option_contracts', [])
         
-        for date in expiry_dates:
-            try:
-                chain = stock.option_chain(date)
-                puts = chain.puts
-                
-                # Skip if no puts data
-                if puts.empty:
-                    continue
-                    
-                puts = puts.copy()  # Avoid SettingWithCopyWarning
-                puts['expiry'] = date
-                puts['dte'] = int((pd.to_datetime(date) - datetime.now()).days)
-                puts['symbol'] = symbol
-                
-                # Calculate Greeks if not available (only for real data)
-                if 'delta' not in puts.columns:
-                    # Get current price for Greeks calculation
-                    if api_source.lower() == "yahoo":
-                        current_price = get_stock_price_yahoo(symbol)
-                    else:
-                        current_price = get_stock_price_alpaca(symbol)
-                    
-                    S = current_price
-                    K = puts['strike']
-                    T = puts['dte'] / 365
-                    r = 0.05  # Risk-free rate (approximate)
-                    sigma = puts['impliedVolatility']
-                    
-                    # Only calculate for valid data
-                    valid_mask = (T > 0) & (sigma > 0) & (K > 0) & (S > 0)
-                    
-                    # Black-Scholes delta calculation for puts (only real calculation, no simulation)
-                    d1 = np.where(valid_mask, 
-                                 (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T)), 
-                                 0)
-                    puts['delta'] = np.where(valid_mask, -norm.cdf(-d1), 0)
-                
-                # Ensure all required columns are present (real data only)
-                if 'openInterest' in puts.columns:
-                    puts['open_interest'] = puts['openInterest']
-                elif 'open_interest' not in puts.columns:
-                    puts['open_interest'] = 0
-                
-                if 'volume' not in puts.columns:
-                    puts['volume'] = 0
-                
-                # Only add options with real volume and open interest data
-                real_data_mask = (puts['volume'] >= 0) & (puts['open_interest'] >= 0) & (puts['lastPrice'] > 0)
-                puts = puts[real_data_mask]
-                
-                if not puts.empty:
-                    all_options = pd.concat([all_options, puts], ignore_index=True)
-                    print(f"Found {len(puts)} real put options for {symbol} expiring on {date}")
-                
-            except Exception as e:
-                print(f"Error processing real options data for {symbol} on {date}: {str(e)}")
-                continue
+        if not contracts:
+            print(f"No put option contracts found for {symbol} in date range")
+            return pd.DataFrame()
         
-        if not all_options.empty:
-            print(f"Total {len(all_options)} REAL put options retrieved for {symbol}")
-        else:
-            print(f"No real options data found for {symbol}")
+        print(f"Found {len(contracts)} put contracts for {symbol}")
+        
+        # Now get pricing/greeks data using snapshots endpoint
+        snapshots_url = f'https://data.alpaca.markets/v1beta1/options/snapshots/{symbol}'
+        snapshots_params = {
+            'feed': 'indicative',  # Use indicative feed for free tier
+            'type': 'put',
+            'expiration_date_gte': min_exp_date,
+            'expiration_date_lte': max_exp_date,
+            'limit': 1000
+        }
+        
+        print(f"Getting options snapshots for {symbol}...")
+        snapshots_response = requests.get(snapshots_url, headers=headers, params=snapshots_params)
+        
+        if snapshots_response.status_code != 200:
+            print(f"Alpaca snapshots API error {snapshots_response.status_code}: {snapshots_response.text}")
+            return pd.DataFrame()
+        
+        snapshots_data = snapshots_response.json()
+        snapshots = snapshots_data.get('snapshots', {})
+        
+        if not snapshots:
+            print(f"No options snapshots found for {symbol}")
+            return pd.DataFrame()
+        
+        # Get current stock price once for all delta calculations
+        current_price = get_stock_price_alpaca(symbol)
+        
+        # Process the data into our format
+        options_data = []
+        
+        for contract_symbol, snapshot in snapshots.items():
+            # Find matching contract info
+            contract_info = None
+            for contract in contracts:
+                if contract.get('symbol') == contract_symbol:
+                    contract_info = contract
+                    break
             
-        return all_options
+            if not contract_info:
+                continue
+            
+            # Extract pricing data from Alpaca response format
+            latest_trade = snapshot.get('latestTrade', {})
+            latest_quote = snapshot.get('latestQuote', {})
+            daily_bar = snapshot.get('dailyBar', {})
+            
+            # Get price from trade, then quote, then daily close
+            price = (latest_trade.get('p') or 
+                    (latest_quote.get('ap', 0) + latest_quote.get('bp', 0)) / 2 if (latest_quote.get('ap', 0) + latest_quote.get('bp', 0)) > 0 else 0 or
+                    daily_bar.get('c', 0))
+            
+            if price <= 0:
+                continue
+            
+            # Get volume from trade size or daily volume with proper handling
+            volume = latest_trade.get('s') or daily_bar.get('v') or 0
+            if volume is None:
+                volume = 0
+                
+            # Calculate DTE with error handling
+            try:
+                exp_date = pd.to_datetime(contract_info.get('expiration_date')).date()
+                dte = (exp_date - base_date).days
+            except:
+                continue  # Skip if expiration date is invalid
+            
+            # Calculate Black-Scholes delta since Alpaca doesn't provide Greeks in indicative feed
+            try:
+                strike = float(contract_info.get('strike_price', 0))
+            except:
+                continue  # Skip if strike price is invalid
+                
+            if current_price > 0 and strike > 0 and dte > 0:
+                S = current_price
+                K = strike  
+                T = dte / 365
+                r = 0.05  # Risk-free rate
+                # Estimate implied volatility (rough approximation)
+                sigma = 0.25  # Default IV for calculation
+                
+                # Black-Scholes delta for puts
+                d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+                delta = -norm.cdf(-d1)
+            else:
+                delta = 0
+            
+            # Get open interest with error handling
+            open_interest = contract_info.get('open_interest') or 0
+            if open_interest is None:
+                open_interest = 0
+            
+            # Build options row with Alpaca data
+            option_row = {
+                'symbol': symbol,
+                'strike': strike,
+                'lastPrice': float(price),
+                'volume': int(volume),
+                'open_interest': int(open_interest),
+                'openInterest': int(open_interest),
+                'impliedVolatility': 0.25,  # Alpaca indicative feed doesn't provide IV
+                'delta': float(delta),
+                'expiry': contract_info.get('expiration_date'),
+                'dte': dte,
+                'contract_symbol': contract_symbol
+            }
+            
+            options_data.append(option_row)
         
+        if options_data:
+            options_df = pd.DataFrame(options_data)
+            print(f"Retrieved {len(options_df)} REAL put options from Alpaca for {symbol}")
+            return options_df
+        else:
+            print(f"No valid options data found for {symbol} from Alpaca")
+            return pd.DataFrame()
+            
     except Exception as e:
-        print(f"Error getting real options chain for {symbol}: {str(e)}")
+        print(f"Error getting Alpaca options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
+
+def get_options_chain(symbol, config, api_source="alpaca"):
+    """Get real options chain data using selected API source"""
+    if api_source.lower() == "yahoo":
+        print(f"Using Yahoo Finance for options data for {symbol}")
+        return get_options_chain_yahoo(symbol, config)
+    else:
+        print(f"Using Alpaca API for options data for {symbol}")
+        return get_options_chain_alpaca(symbol, config)
 
 def calculate_metrics(options_chain, current_price):
     """Calculate additional metrics for options"""

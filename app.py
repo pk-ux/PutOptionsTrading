@@ -248,7 +248,7 @@ st.session_state.api_source = api_source
 st.sidebar.markdown("**Data Sources Used:**")
 if api_source == "alpaca":
     st.sidebar.markdown("• **Stock Prices**: Alpaca (Real-time)")
-    st.sidebar.markdown("• **Options Data**: Yahoo Finance (Real chains)")
+    st.sidebar.markdown("• **Options Data**: Alpaca (Real chains)")
 else:
     st.sidebar.markdown("• **Stock Prices**: Yahoo Finance")
     st.sidebar.markdown("• **Options Data**: Yahoo Finance (Real chains)")
@@ -256,13 +256,13 @@ else:
 # Show API connection status
 if api_source == "alpaca":
     if os.getenv('ALPACA_API_KEY'):
-        st.sidebar.success("✅ Alpaca API Connected")
+        st.sidebar.success("✅ Alpaca API Connected - Using same source for both stock prices and options data")
     else:
         st.sidebar.error("❌ Alpaca API Keys Missing")
 else:
-    st.sidebar.success("✅ Yahoo Finance Connected")
+    st.sidebar.success("✅ Yahoo Finance Connected - Using same source for both stock prices and options data")
 
-st.sidebar.info("📝 **All data is real** - No simulated or generated data is used.")
+st.sidebar.info("📝 **All data is real** - Selected API source provides both stock prices and options data consistently.")
 
 st.sidebar.divider()
 
