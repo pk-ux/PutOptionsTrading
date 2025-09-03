@@ -333,152 +333,95 @@ with tab1:
 
 # Screening Criteria Tab
 with tab2:
-    st.header("🎯 Screening Criteria Configuration")
+    st.header("Screening Criteria Configuration")
     
-    # Modern card-based layout with custom CSS
-    st.markdown("""
-    <style>
-    .card {
-        background: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 12px;
-        border-left: 4px solid #4CAF50;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .card h3 {
-        color: #2E7D32;
-        margin-top: 0;
-        font-size: 1.2rem;
-        font-weight: 600;
-    }
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-        margin: 0.5rem 0;
-    }
-    .settings-container {
-        margin-bottom: 2rem;
-    }
-    .save-button-container {
-        display: flex;
-        justify-content: center;
-        margin: 2rem 0;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Stock Symbol Management Section
+    st.subheader("Stock Symbols")
     
-    # Stock Symbols Card
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### 📈 Stock Symbols")
+    # Simple comma-separated text area for symbols
     current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
     symbols_input = st.text_area(
         "Stock Symbols (comma-separated):",
         value=current_symbols_text,
         help="Enter stock symbols separated by commas (e.g., AAPL, TSLA, NVDA, SPY)",
         key='symbols_text_input',
-        height=80
+        height=100
     )
-    st.markdown(f"**Active Symbols:** {len(st.session_state.config['data']['symbols'])} stocks selected")
-    st.markdown('</div>', unsafe_allow_html=True)
     
-    # Responsive layout for mobile and desktop
-    # On mobile, stack vertically; on desktop, use columns
-    col1, col2 = st.columns([1, 1])
+    st.divider()
+    
+    col1, col2 = st.columns(2)
     
     with col1:
-        # Options Strategy Card
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("### ⚙️ Options Strategy Settings")
+        st.subheader("Options Strategy Settings")
         
-        # Time-based settings in a sub-grid
-        time_col1, time_col2 = st.columns(2)
-        with time_col1:
-            max_dte = st.number_input(
-                "📅 Max DTE:",
-                min_value=1,
-                max_value=365,
-                value=st.session_state.config['options_strategy']['max_dte'],
-                key='max_dte',
-                help="Maximum days to expiration"
-            )
-        with time_col2:
-            min_dte = st.number_input(
-                "📅 Min DTE:",
-                min_value=0,
-                max_value=364,
-                value=st.session_state.config['options_strategy'].get('min_dte', 0),
-                key='min_dte',
-                help="Minimum days to expiration"
-            )
+        max_dte = st.number_input(
+            "Max Days to Expiration:",
+            min_value=1,
+            max_value=365,
+            value=st.session_state.config['options_strategy']['max_dte'],
+            key='max_dte'
+        )
         
-        # Volume and OI settings
-        vol_col1, vol_col2 = st.columns(2)
-        with vol_col1:
-            min_volume = st.number_input(
-                "📊 Min Volume:",
-                min_value=0,
-                max_value=10000,
-                value=st.session_state.config['options_strategy']['min_volume'],
-                key='min_volume',
-                help="Minimum daily volume"
-            )
-        with vol_col2:
-            min_oi = st.number_input(
-                "🏗️ Min Open Interest:",
-                min_value=0,
-                max_value=10000,
-                value=st.session_state.config['options_strategy']['min_open_interest'],
-                key='min_oi',
-                help="Minimum open interest"
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
+        min_dte = st.number_input(
+            "Min Days to Expiration:",
+            min_value=0,
+            max_value=364,
+            value=st.session_state.config['options_strategy'].get('min_dte', 0),
+            key='min_dte'
+        )
+        
+        min_volume = st.number_input(
+            "Minimum Volume:",
+            min_value=0,
+            max_value=10000,
+            value=st.session_state.config['options_strategy']['min_volume'],
+            key='min_volume'
+        )
+        
+        min_oi = st.number_input(
+            "Minimum Open Interest:",
+            min_value=0,
+            max_value=10000,
+            value=st.session_state.config['options_strategy']['min_open_interest'],
+            key='min_oi'
+        )
     
     with col2:
-        # Screening Criteria Card
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("### 🎯 Screening Criteria Settings")
+        st.subheader("Screening Criteria Settings")
         
         min_return = st.number_input(
-            "💰 Min Annualized Return (%):",
+            "Min Annualized Return (%):",
             min_value=0.0,
             max_value=100.0,
             value=float(st.session_state.config['screening_criteria']['min_annualized_return']),
-            key='min_return',
-            help="Minimum annualized return percentage"
+            key='min_return'
         )
         
-        st.markdown("**📈 Delta Range:**")
-        delta_col1, delta_col2 = st.columns(2)
-        with delta_col1:
+        st.write("Delta Range:")
+        col2a, col2b = st.columns(2)
+        with col2a:
             min_delta = st.number_input(
-                "Min Δ:",
+                "Min Delta:",
                 min_value=-1.0,
                 max_value=0.0,
                 value=float(st.session_state.config['screening_criteria']['min_delta']),
                 step=0.05,
-                key='min_delta',
-                help="Minimum delta value"
+                key='min_delta'
             )
-        with delta_col2:
+        with col2b:
             max_delta = st.number_input(
-                "Max Δ:",
+                "Max Delta:",
                 min_value=-1.0,
                 max_value=0.0,
                 value=float(st.session_state.config['screening_criteria']['max_delta']),
                 step=0.05,
-                key='max_delta',
-                help="Maximum delta value"
+                key='max_delta'
             )
-        st.markdown('</div>', unsafe_allow_html=True)
     
-    # Centered Save Button with styling
-    st.markdown('<div class="save-button-container">', unsafe_allow_html=True)
-    if st.button("💾 Save All Settings", type="primary", help="Save all screening criteria and stock symbols"):
+    # Save settings button
+    if st.button("Save Settings"):
         save_settings()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # Results Display Section
 if st.session_state.results:
