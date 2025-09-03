@@ -17,7 +17,9 @@
             "NVDA",
             "AMD",
             "INTC",
-            "META"
+            "META",
+            "CRWV",
+            "CRCL"
         ]
     },
     "options_strategy": {

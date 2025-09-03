@@ -15,7 +15,7 @@ import os
 # Page configuration
 st.set_page_config(
     page_title="Put Options Screener",
-    page_icon="📊",
+    page_icon="P",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -242,14 +242,14 @@ def display_results_table(df, symbol_name):
     st.dataframe(styled_df, width='stretch')
 
 # Main application layout
-st.title("📊 Put Options Screener")
+st.title("Put Options Screener")
 
 # API Data Source Selector
-st.sidebar.header("📊 Data Sources")
+st.sidebar.header("Data Sources")
 api_source = st.sidebar.radio(
     "Stock Prices Source:",
     options=["alpaca", "yahoo"],
-    format_func=lambda x: "🚀 Alpaca (Real-time)" if x == "alpaca" else "📈 Yahoo Finance (Free)",
+    format_func=lambda x: "Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)",
     index=0 if st.session_state.api_source == "alpaca" else 1,
     help="Choose your data source for stock prices"
 )
@@ -267,13 +267,13 @@ else:
 # Show API connection status
 if api_source == "alpaca":
     if os.getenv('ALPACA_API_KEY'):
-        st.sidebar.success("✅ Alpaca API Connected - Using same source for both stock prices and options data")
+        st.sidebar.success("Alpaca API Connected - Using same source for both stock prices and options data")
     else:
-        st.sidebar.error("❌ Alpaca API Keys Missing")
+        st.sidebar.error("Alpaca API Keys Missing")
 else:
-    st.sidebar.success("✅ Yahoo Finance Connected - Using same source for both stock prices and options data")
+    st.sidebar.success("Yahoo Finance Connected - Using same source for both stock prices and options data")
 
-st.sidebar.info("📝 **All data is real** - Selected API source provides both stock prices and options data consistently.")
+st.sidebar.info("**All data is real** - Selected API source provides both stock prices and options data consistently.")
 
 st.sidebar.divider()
 
@@ -318,14 +318,14 @@ with tab1:
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🔍 Screen Selected Stock", disabled=st.session_state.processing):
+        if st.button("Screen Selected Stock", disabled=st.session_state.processing):
             if selected_symbol:
                 screen_symbols([selected_symbol])
             else:
                 st.warning("Please select a stock symbol first.")
     
     with col2:
-        if st.button("🔍 Screen All Stocks", disabled=st.session_state.processing):
+        if st.button("Screen All Stocks", disabled=st.session_state.processing):
             if st.session_state.config['data']['symbols']:
                 screen_symbols(st.session_state.config['data']['symbols'])
             else:
@@ -336,7 +336,7 @@ with tab2:
     st.header("Screening Criteria Configuration")
     
     # Stock Symbol Management Section
-    st.subheader("📈 Stock Symbols")
+    st.subheader("Stock Symbols")
     
     # Simple comma-separated text area for symbols
     current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
@@ -420,7 +420,7 @@ with tab2:
             )
     
     # Save settings button
-    if st.button("💾 Save Settings"):
+    if st.button("Save Settings"):
         save_settings()
 
 # Results Display Section
@@ -457,4 +457,4 @@ if st.session_state.progress_messages:
 
 # Processing indicator
 if st.session_state.processing:
-    st.info("⏳ Processing in progress...")
+    st.info("Processing in progress...")
