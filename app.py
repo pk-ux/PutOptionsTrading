@@ -60,6 +60,24 @@ def add_symbol():
     elif new_symbol in st.session_state.config['data']['symbols']:
         st.info(f"{new_symbol} is already in the list")
 
+def add_symbol_criteria():
+    """Add new symbol to the list from criteria tab"""
+    new_symbol = st.session_state.new_symbol_input_criteria.strip().upper()
+    if new_symbol and new_symbol not in st.session_state.config['data']['symbols']:
+        st.session_state.config['data']['symbols'].append(new_symbol)
+        st.success(f"Added {new_symbol} to stock list")
+        st.session_state.new_symbol_input_criteria = ""
+        st.rerun()
+    elif new_symbol in st.session_state.config['data']['symbols']:
+        st.info(f"{new_symbol} is already in the list")
+
+def remove_symbol(symbol_to_remove):
+    """Remove symbol from the list"""
+    if symbol_to_remove in st.session_state.config['data']['symbols']:
+        st.session_state.config['data']['symbols'].remove(symbol_to_remove)
+        st.success(f"Removed {symbol_to_remove} from stock list")
+        st.rerun()
+
 def save_settings():
     """Save current settings to config file"""
     update_config()
@@ -323,6 +341,39 @@ with tab1:
 # Screening Criteria Tab
 with tab2:
     st.header("Screening Criteria Configuration")
+    
+    # Stock Symbol Management Section
+    st.subheader("📈 Stock Symbol Management")
+    
+    # Current symbols with remove buttons
+    if st.session_state.config['data']['symbols']:
+        st.write("**Current Symbols:**")
+        cols = st.columns(4)  # Create 4 columns for symbol display
+        for i, symbol in enumerate(st.session_state.config['data']['symbols']):
+            with cols[i % 4]:
+                col_symbol, col_remove = st.columns([3, 1])
+                with col_symbol:
+                    st.write(f"🔹 {symbol}")
+                with col_remove:
+                    if st.button("❌", key=f"remove_{symbol}", help=f"Remove {symbol}"):
+                        remove_symbol(symbol)
+    else:
+        st.info("No stock symbols added yet.")
+    
+    # Add new symbol in criteria tab
+    col_add1, col_add2 = st.columns([3, 1])
+    with col_add1:
+        new_symbol_criteria = st.text_input(
+            "Add New Stock Symbol:",
+            key='new_symbol_input_criteria',
+            help="Enter a stock symbol (e.g., AAPL, TSLA, NVDA)"
+        )
+    with col_add2:
+        st.write("")  # Spacer
+        if st.button("➕ Add", key='add_symbol_criteria'):
+            add_symbol_criteria()
+    
+    st.divider()
     
     col1, col2 = st.columns(2)
     
