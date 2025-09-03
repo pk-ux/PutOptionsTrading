@@ -23,9 +23,9 @@
         ]
     },
     "options_strategy": {
-        "max_dte": 30,
-        "min_dte": 15,
-        "min_volume": 10,
+        "max_dte": 15,
+        "min_dte": 7,
+        "min_volume": 5,
         "min_open_interest": 10
     },
     "screening_criteria": {
