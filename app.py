@@ -200,9 +200,9 @@ def display_results_table(df, symbol_name):
         """Apply color coding to annualized return values"""
         if isinstance(val, (int, float)):
             if val >= 50:
-                return 'background-color: #90EE90'  # Light green
+                return 'background-color: #4CAF50; color: white; font-weight: bold'  # Green background with white text
             elif val >= 30:
-                return 'background-color: #FFFFE0'  # Light yellow
+                return 'background-color: #FFC107; color: black; font-weight: bold'  # Amber background with black text
         return ''
     
     # Apply styling only if Annualized Return column exists
