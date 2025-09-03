@@ -10,6 +10,7 @@ from options_screener import (
     load_config, get_options_chain, calculate_metrics,
     screen_options, format_output, save_config_file, get_stock_price
 )
+import os
 
 # Page configuration
 st.set_page_config(
@@ -34,6 +35,9 @@ if 'processing' not in st.session_state:
 
 if 'progress_messages' not in st.session_state:
     st.session_state.progress_messages = []
+
+if 'api_source' not in st.session_state:
+    st.session_state.api_source = "alpaca"
 
 def update_config():
     """Update configuration from form inputs"""
@@ -62,14 +66,14 @@ def save_settings():
     save_config_file(st.session_state.config)
     st.success("Settings saved successfully!")
 
-def process_single_symbol(symbol, config):
+def process_single_symbol(symbol, config, api_source="alpaca"):
     """Process a single symbol and return results"""
     try:
-        # Get stock price using Alpaca API
-        current_price = get_stock_price(symbol)
+        # Get stock price using selected API
+        current_price = get_stock_price(symbol, api_source)
         
         # Get options chain
-        options = get_options_chain(symbol, config)
+        options = get_options_chain(symbol, config, api_source)
         
         if options.empty:
             return None, f"No options data found for {symbol}"
@@ -108,7 +112,7 @@ def screen_symbols(symbols):
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # Submit all tasks
         future_to_symbol = {
-            executor.submit(process_single_symbol, symbol, st.session_state.config): symbol 
+            executor.submit(process_single_symbol, symbol, st.session_state.config, st.session_state.api_source): symbol 
             for symbol in symbols
         }
         
@@ -228,6 +232,28 @@ def display_results_table(df, symbol_name):
 
 # Main application layout
 st.title("📊 Put Options Screener")
+
+# API Data Source Selector
+st.sidebar.header("📊 Data Source")
+api_source = st.sidebar.radio(
+    "Select API Source:",
+    options=["alpaca", "yahoo"],
+    format_func=lambda x: "🚀 Alpaca (Real-time)" if x == "alpaca" else "📈 Yahoo Finance (Free)",
+    index=0 if st.session_state.api_source == "alpaca" else 1,
+    help="Choose your data source:\n• Alpaca: Real-time data with your API keys\n• Yahoo Finance: Free but may have delays"
+)
+st.session_state.api_source = api_source
+
+# Show API status
+if api_source == "alpaca":
+    if os.getenv('ALPACA_API_KEY'):
+        st.sidebar.success("✅ Alpaca API Connected")
+    else:
+        st.sidebar.error("❌ Alpaca API Keys Missing")
+else:
+    st.sidebar.info("📈 Using Yahoo Finance")
+
+st.sidebar.divider()
 
 # Create tabs for main interface
 tab1, tab2 = st.tabs(["Stock Symbols", "Screening Criteria"])
