@@ -327,25 +327,54 @@ def get_options_chain_alpaca(symbol, config):
             except:
                 continue  # Skip if expiration date is invalid
             
-            # Calculate Black-Scholes delta since Alpaca doesn't provide Greeks in indicative feed
+            # Calculate implied volatility and delta since Alpaca indicative feed doesn't provide Greeks
             try:
                 strike = float(contract_info.get('strike_price', 0))
             except:
                 continue  # Skip if strike price is invalid
                 
-            if current_price > 0 and strike > 0 and dte > 0:
+            if current_price > 0 and strike > 0 and dte > 0 and price > 0:
                 S = current_price
                 K = strike  
                 T = dte / 365
                 r = 0.05  # Risk-free rate
-                # Estimate implied volatility (rough approximation)
-                sigma = 0.25  # Default IV for calculation
                 
-                # Black-Scholes delta for puts
+                # Calculate implied volatility using Newton-Raphson method
+                def black_scholes_put(S, K, T, r, sigma):
+                    if sigma <= 0 or T <= 0:
+                        return 0
+                    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+                    d2 = d1 - sigma*np.sqrt(T)
+                    put_price = K * np.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+                    return max(put_price, 0)
+                
+                def vega(S, K, T, r, sigma):
+                    if sigma <= 0 or T <= 0:
+                        return 0
+                    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+                    return S * np.sqrt(T) * norm.pdf(d1)
+                
+                # Newton-Raphson to find implied volatility
+                sigma = 0.3  # Initial guess
+                for i in range(20):  # Max iterations
+                    bs_price = black_scholes_put(S, K, T, r, sigma)
+                    price_diff = bs_price - price
+                    if abs(price_diff) < 0.001:
+                        break
+                    vega_val = vega(S, K, T, r, sigma)
+                    if vega_val == 0:
+                        break
+                    sigma = sigma - price_diff / vega_val
+                    sigma = max(0.01, min(sigma, 5.0))  # Keep IV reasonable
+                
+                # Calculate delta using the calculated IV
                 d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
                 delta = -norm.cdf(-d1)
+                
+                implied_vol = sigma
             else:
                 delta = 0
+                implied_vol = 0
             
             # Get open interest with error handling
             open_interest = contract_info.get('open_interest') or 0
@@ -360,7 +389,7 @@ def get_options_chain_alpaca(symbol, config):
                 'volume': int(volume),
                 'open_interest': int(open_interest),
                 'openInterest': int(open_interest),
-                'impliedVolatility': 0.25,  # Alpaca indicative feed doesn't provide IV
+                'impliedVolatility': float(implied_vol),  # Calculated real IV from option prices
                 'delta': float(delta),
                 'expiry': contract_info.get('expiration_date'),
                 'dte': dte,
