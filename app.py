@@ -8,7 +8,7 @@ import asyncio
 import concurrent.futures
 from options_screener import (
     load_config, get_options_chain, calculate_metrics,
-    screen_options, format_output, save_config_file
+    screen_options, format_output, save_config_file, get_stock_price
 )
 
 # Page configuration
@@ -65,11 +65,8 @@ def save_settings():
 def process_single_symbol(symbol, config):
     """Process a single symbol and return results"""
     try:
-        import yfinance as yf
-        
-        # Get stock price
-        stock = yf.Ticker(symbol)
-        current_price = stock.info['regularMarketPrice']
+        # Get stock price using Alpaca API
+        current_price = get_stock_price(symbol)
         
         # Get options chain
         options = get_options_chain(symbol, config)
