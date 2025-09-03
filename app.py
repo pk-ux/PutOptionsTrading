@@ -188,12 +188,24 @@ def display_results_table(df, symbol_name):
     display_df = display_df.rename(columns=column_mapping)
     
     # Format numerical columns
+    if 'Current Price' in display_df.columns:
+        display_df['Current Price'] = display_df['Current Price'].round(2)
+    if 'Strike Price' in display_df.columns:
+        display_df['Strike Price'] = display_df['Strike Price'].round(2)
+    if 'Option Price' in display_df.columns:
+        display_df['Option Price'] = display_df['Option Price'].round(2)
     if 'Delta' in display_df.columns:
-        display_df['Delta'] = display_df['Delta'].round(3)
+        display_df['Delta'] = display_df['Delta'].round(2)
     if 'Annualized Return (%)' in display_df.columns:
         display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].round(2)
     if 'Implied Volatility (%)' in display_df.columns:
         display_df['Implied Volatility (%)'] = display_df['Implied Volatility (%)'].round(2)
+    if 'Volume' in display_df.columns:
+        display_df['Volume'] = display_df['Volume'].astype(int)
+    if 'Open Interest' in display_df.columns:
+        display_df['Open Interest'] = display_df['Open Interest'].astype(int)
+    if 'DTE' in display_df.columns:
+        display_df['DTE'] = display_df['DTE'].astype(int)
     
     # Apply color coding using map function for the annualized return column
     def color_annualized_return(val):
