@@ -157,15 +157,6 @@ def screen_symbols(symbols):
     else:
         st.warning("No qualifying options found for any symbol.")
 
-def color_cells(val, col_name):
-    """Apply color coding to cells based on annualized return"""
-    if col_name == 'annualized_return' and isinstance(val, (int, float)):
-        if val >= 50:
-            return 'background-color: #90EE90'  # Light green
-        elif val >= 30:
-            return 'background-color: #FFFFE0'  # Light yellow
-    return ''
-
 def display_results_table(df, symbol_name):
     """Display results table with color coding"""
     if df.empty:
@@ -175,7 +166,7 @@ def display_results_table(df, symbol_name):
     st.subheader(f"{symbol_name} Screening Results")
     
     # Prepare display dataframe with proper column names
-    display_df = df.copy()
+    display_df = df.copy().reset_index(drop=True)  # Reset index to ensure uniqueness
     
     column_mapping = {
         'symbol': 'Symbol',
@@ -204,13 +195,23 @@ def display_results_table(df, symbol_name):
     if 'Implied Volatility (%)' in display_df.columns:
         display_df['Implied Volatility (%)'] = display_df['Implied Volatility (%)'].round(2)
     
-    # Apply styling for color coding
-    styled_df = display_df.style.apply(
-        lambda row: [color_cells(val, orig_col) for val, orig_col in zip(row, display_cols)], 
-        axis=1
-    )
+    # Apply color coding using map function for the annualized return column
+    def color_annualized_return(val):
+        """Apply color coding to annualized return values"""
+        if isinstance(val, (int, float)):
+            if val >= 50:
+                return 'background-color: #90EE90'  # Light green
+            elif val >= 30:
+                return 'background-color: #FFFFE0'  # Light yellow
+        return ''
     
-    st.dataframe(styled_df, use_container_width=True)
+    # Apply styling only if Annualized Return column exists
+    if 'Annualized Return (%)' in display_df.columns:
+        styled_df = display_df.style.map(color_annualized_return, subset=['Annualized Return (%)'])
+    else:
+        styled_df = display_df.style
+    
+    st.dataframe(styled_df, width='stretch')
 
 # Main application layout
 st.title("📊 Put Options Screener")
