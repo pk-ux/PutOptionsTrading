@@ -6,6 +6,7 @@ import requests
 from datetime import datetime, timedelta
 from scipy.stats import norm
 import yfinance as yf
+from alpaca_mcp_client import alpaca_mcp_client
 
 def load_config():
     """Load configuration from JSON file, create default if not exists"""
@@ -65,45 +66,25 @@ def save_config_file(config):
         return False
 
 def get_stock_price_alpaca(symbol):
-    """Get current stock price using Alpaca Market Data API"""
+    """Get current stock price using Alpaca MCP Client"""
     try:
-        api_key = os.getenv('ALPACA_API_KEY')
-        secret_key = os.getenv('ALPACA_SECRET_KEY')
+        print(f"Fetching real-time price for {symbol} from Alpaca MCP...")
+        quote = alpaca_mcp_client.get_stock_quote(symbol)
         
-        if not api_key or not secret_key:
-            print(f"Alpaca API credentials missing - using fallback price for {symbol}")
-            return generate_realistic_price(symbol)
-        
-        # Use Alpaca Market Data API directly
-        url = f"https://data.alpaca.markets/v2/stocks/{symbol}/quotes/latest"
-        headers = {
-            'APCA-API-KEY-ID': api_key,
-            'APCA-API-SECRET-KEY': secret_key
-        }
-        
-        print(f"Fetching real-time price for {symbol} from Alpaca...")
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"Alpaca API response for {symbol}: {response.status_code}")
-            
-            if 'quote' in data and data['quote']:
-                quote = data['quote']
-                bid = float(quote.get('bp', 0))
-                ask = float(quote.get('ap', 0))
-                
-                if bid > 0 and ask > 0:
-                    mid_price = (bid + ask) / 2
-                    print(f"Real-time price for {symbol}: ${mid_price:.2f} (Bid: ${bid}, Ask: ${ask})")
-                    return round(mid_price, 2)
-        
-        print(f"API call failed for {symbol} (Status: {response.status_code}) - using fallback")
-        return generate_realistic_price(symbol)
+        if quote.get('success') and quote.get('mid_price', 0) > 0:
+            mid_price = quote['mid_price']
+            bid = quote.get('bid_price', 0)
+            ask = quote.get('ask_price', 0)
+            print(f"Real-time price for {symbol}: ${mid_price:.2f} (Bid: ${bid:.2f}, Ask: ${ask:.2f})")
+            return round(mid_price, 2)
+        else:
+            error_msg = quote.get('error', 'Unknown error')
+            print(f"ERROR: Failed to get real price for {symbol}: {error_msg}")
+            return None  # Return None instead of synthetic data
         
     except Exception as e:
-        print(f"Error getting stock price for {symbol}: {str(e)} - using fallback")
-        return generate_realistic_price(symbol)
+        print(f"ERROR: Exception getting stock price for {symbol}: {str(e)}")
+        return None  # Return None instead of synthetic data
 
 def get_stock_price_yahoo(symbol):
     """Get current stock price using Yahoo Finance API"""
@@ -209,22 +190,9 @@ def get_options_chain_yahoo(symbol, config):
         return pd.DataFrame()
 
 def get_options_chain_alpaca(symbol, config):
-    """Get real options chain data from Alpaca API"""
+    """Get real options chain data using Alpaca MCP Client"""
     try:
-        print(f"Fetching REAL options data for {symbol} from Alpaca API...")
-        
-        api_key = os.getenv('ALPACA_API_KEY')
-        secret_key = os.getenv('ALPACA_SECRET_KEY')
-        
-        if not api_key or not secret_key:
-            print("Alpaca API keys not found")
-            return pd.DataFrame()
-        
-        headers = {
-            'APCA-API-KEY-ID': api_key,
-            'APCA-API-SECRET-KEY': secret_key,
-            'accept': 'application/json'
-        }
+        print(f"Fetching REAL options data for {symbol} from Alpaca MCP...")
         
         max_dte = config['options_strategy']['max_dte']
         min_dte = config['options_strategy'].get('min_dte', 0)
@@ -234,26 +202,9 @@ def get_options_chain_alpaca(symbol, config):
         min_exp_date = (base_date + timedelta(days=min_dte)).strftime('%Y-%m-%d')
         max_exp_date = (base_date + timedelta(days=max_dte)).strftime('%Y-%m-%d')
         
-        # First, get available option contracts within DTE range
-        contracts_url = 'https://paper-api.alpaca.markets/v2/options/contracts'
-        contracts_params = {
-            'underlying_symbols': symbol,
-            'type': 'put',  # We want put options
-            'status': 'active',
-            'expiration_date_gte': min_exp_date,
-            'expiration_date_lte': max_exp_date,
-            'limit': 1000
-        }
-        
+        # Get option contracts using MCP client
         print(f"Getting put contracts for {symbol} from {min_exp_date} to {max_exp_date}...")
-        contracts_response = requests.get(contracts_url, headers=headers, params=contracts_params)
-        
-        if contracts_response.status_code != 200:
-            print(f"Alpaca contracts API error {contracts_response.status_code}: {contracts_response.text}")
-            return pd.DataFrame()
-        
-        contracts_data = contracts_response.json()
-        contracts = contracts_data.get('option_contracts', [])
+        contracts = alpaca_mcp_client.get_option_contracts(symbol, min_exp_date, max_exp_date)
         
         if not contracts:
             print(f"No put option contracts found for {symbol} in date range")
@@ -261,78 +212,54 @@ def get_options_chain_alpaca(symbol, config):
         
         print(f"Found {len(contracts)} put contracts for {symbol}")
         
-        # Now get pricing/greeks data using snapshots endpoint
-        snapshots_url = f'https://data.alpaca.markets/v1beta1/options/snapshots/{symbol}'
-        snapshots_params = {
-            'feed': 'indicative',  # Use indicative feed for free tier
-            'type': 'put',
-            'expiration_date_gte': min_exp_date,
-            'expiration_date_lte': max_exp_date,
-            'limit': 1000
-        }
+        # Extract contract symbols for pricing lookup
+        contract_symbols = [contract['symbol'] for contract in contracts]
         
-        print(f"Getting options snapshots for {symbol}...")
-        snapshots_response = requests.get(snapshots_url, headers=headers, params=snapshots_params)
+        # Get option quotes using MCP client
+        print(f"Getting options pricing for {len(contract_symbols)} contracts...")
+        quotes_response = alpaca_mcp_client.get_option_quotes(contract_symbols)
         
-        if snapshots_response.status_code != 200:
-            print(f"Alpaca snapshots API error {snapshots_response.status_code}: {snapshots_response.text}")
+        if not quotes_response.get('success') or not quotes_response.get('quotes'):
+            print(f"No options quotes found for {symbol}")
             return pd.DataFrame()
         
-        snapshots_data = snapshots_response.json()
-        snapshots = snapshots_data.get('snapshots', {})
+        quotes = quotes_response['quotes']
         
-        if not snapshots:
-            print(f"No options snapshots found for {symbol}")
-            return pd.DataFrame()
-        
-        # Get current stock price once for all delta calculations
+        # Get current stock price for calculations
         current_price = get_stock_price_alpaca(symbol)
+        if current_price is None:
+            print(f"ERROR: Cannot get stock price for {symbol} - skipping options chain")
+            return pd.DataFrame()
         
         # Process the data into our format
         options_data = []
         
-        for contract_symbol, snapshot in snapshots.items():
-            # Find matching contract info
-            contract_info = None
-            for contract in contracts:
-                if contract.get('symbol') == contract_symbol:
-                    contract_info = contract
-                    break
+        for contract in contracts:
+            contract_symbol = contract['symbol']
+            quote = quotes.get(contract_symbol, {})
             
-            if not contract_info:
+            if not quote:
                 continue
-            
-            # Extract pricing data from Alpaca response format
-            latest_trade = snapshot.get('latestTrade', {})
-            latest_quote = snapshot.get('latestQuote', {})
-            daily_bar = snapshot.get('dailyBar', {})
-            
-            # Get price from trade, then quote, then daily close
-            price = (latest_trade.get('p') or 
-                    (latest_quote.get('ap', 0) + latest_quote.get('bp', 0)) / 2 if (latest_quote.get('ap', 0) + latest_quote.get('bp', 0)) > 0 else 0 or
-                    daily_bar.get('c', 0))
-            
+                
+            # Extract pricing data
+            price = quote.get('mid_price', 0)
             if price <= 0:
                 continue
             
-            # Get volume from trade size or daily volume with proper handling
-            volume = latest_trade.get('s') or daily_bar.get('v') or 0
-            if volume is None:
-                volume = 0
-                
-            # Calculate DTE with error handling
+            # Calculate DTE
             try:
-                exp_date = pd.to_datetime(contract_info.get('expiration_date')).date()
+                exp_date = pd.to_datetime(contract['expiration_date']).date()
                 dte = (exp_date - base_date).days
             except:
                 continue  # Skip if expiration date is invalid
             
-            # Calculate implied volatility and delta since Alpaca indicative feed doesn't provide Greeks
+            # Get strike price
             try:
-                strike = float(contract_info.get('strike_price', 0))
+                strike = float(contract['strike_price'])
             except:
                 continue  # Skip if strike price is invalid
                 
+            # Calculate implied volatility and delta using Black-Scholes
             if current_price > 0 and strike > 0 and dte > 0 and price > 0:
                 S = current_price
                 K = strike  
@@ -376,22 +303,17 @@ def get_options_chain_alpaca(symbol, config):
                 delta = 0
                 implied_vol = 0
             
-            # Get open interest with error handling
-            open_interest = contract_info.get('open_interest') or 0
-            if open_interest is None:
-                open_interest = 0
-            
-            # Build options row with Alpaca data
+            # Build options row with MCP data
             option_row = {
                 'symbol': symbol,
                 'strike': strike,
                 'lastPrice': float(price),
-                'volume': int(volume),
-                'open_interest': int(open_interest),
-                'openInterest': int(open_interest),
+                'volume': int(quote.get('volume', 0)),
+                'open_interest': int(contract.get('open_interest', 0)),
+                'openInterest': int(contract.get('open_interest', 0)),
                 'impliedVolatility': float(implied_vol),  # Calculated real IV from option prices
                 'delta': float(delta),
-                'expiry': contract_info.get('expiration_date'),
+                'expiry': contract['expiration_date'],
                 'dte': dte,
                 'contract_symbol': contract_symbol
             }
@@ -400,14 +322,14 @@ def get_options_chain_alpaca(symbol, config):
         
         if options_data:
             options_df = pd.DataFrame(options_data)
-            print(f"Retrieved {len(options_df)} REAL put options from Alpaca for {symbol}")
+            print(f"Retrieved {len(options_df)} REAL put options from Alpaca MCP for {symbol}")
             return options_df
         else:
-            print(f"No valid options data found for {symbol} from Alpaca")
+            print(f"No valid options data found for {symbol} from Alpaca MCP")
             return pd.DataFrame()
             
     except Exception as e:
-        print(f"Error getting Alpaca options chain for {symbol}: {str(e)}")
+        print(f"Error getting Alpaca MCP options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
 
 def get_options_chain(symbol, config, api_source="alpaca"):
