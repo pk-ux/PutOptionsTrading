@@ -187,19 +187,19 @@ def display_results_table(df, symbol_name):
     display_df = display_df[display_cols]
     display_df = display_df.rename(columns=column_mapping)
     
-    # Format numerical columns
+    # Format numerical columns with explicit decimal places
     if 'Current Price' in display_df.columns:
-        display_df['Current Price'] = display_df['Current Price'].round(2)
+        display_df['Current Price'] = display_df['Current Price'].apply(lambda x: f"{x:.2f}")
     if 'Strike Price' in display_df.columns:
-        display_df['Strike Price'] = display_df['Strike Price'].round(2)
+        display_df['Strike Price'] = display_df['Strike Price'].apply(lambda x: f"{x:.2f}")
     if 'Option Price' in display_df.columns:
-        display_df['Option Price'] = display_df['Option Price'].round(2)
+        display_df['Option Price'] = display_df['Option Price'].apply(lambda x: f"{x:.2f}")
     if 'Delta' in display_df.columns:
-        display_df['Delta'] = display_df['Delta'].round(2)
+        display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.2f}")
     if 'Annualized Return (%)' in display_df.columns:
-        display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].round(2)
+        display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].apply(lambda x: f"{x:.2f}")
     if 'Implied Volatility (%)' in display_df.columns:
-        display_df['Implied Volatility (%)'] = display_df['Implied Volatility (%)'].round(2)
+        display_df['Implied Volatility (%)'] = display_df['Implied Volatility (%)'].apply(lambda x: f"{x:.2f}")
     if 'Volume' in display_df.columns:
         display_df['Volume'] = display_df['Volume'].astype(int)
     if 'Open Interest' in display_df.columns:
@@ -210,11 +210,15 @@ def display_results_table(df, symbol_name):
     # Apply color coding using map function for the annualized return column
     def color_annualized_return(val):
         """Apply color coding to annualized return values"""
-        if isinstance(val, (int, float)):
-            if val >= 50:
+        try:
+            # Convert string back to float for comparison
+            numeric_val = float(val) if isinstance(val, str) else val
+            if numeric_val >= 50:
                 return 'background-color: #4CAF50; color: white; font-weight: bold'  # Green background with white text
-            elif val >= 30:
+            elif numeric_val >= 30:
                 return 'background-color: #FFC107; color: black; font-weight: bold'  # Amber background with black text
+        except (ValueError, TypeError):
+            pass
         return ''
     
     # Apply styling only if Annualized Return column exists
