@@ -67,26 +67,41 @@ def get_stock_price(symbol):
     """Get current stock price using Alpaca Market Data API"""
     try:
         api_key = os.getenv('ALPACA_API_KEY')
-        if not api_key:
-            raise ValueError("Alpaca API key not found in environment variables")
+        secret_key = os.getenv('ALPACA_SECRET_KEY')
+        
+        if not api_key or not secret_key:
+            print(f"Alpaca API credentials missing - using fallback price for {symbol}")
+            return generate_realistic_price(symbol)
         
         # Use Alpaca Market Data API directly
         url = f"https://data.alpaca.markets/v2/stocks/{symbol}/quotes/latest"
-        headers = {'APCA-API-KEY-ID': api_key, 'APCA-API-SECRET-KEY': os.getenv('ALPACA_SECRET_KEY')}
+        headers = {
+            'APCA-API-KEY-ID': api_key,
+            'APCA-API-SECRET-KEY': secret_key
+        }
         
+        print(f"Fetching real-time price for {symbol} from Alpaca...")
         response = requests.get(url, headers=headers)
+        
         if response.status_code == 200:
             data = response.json()
-            if 'quote' in data:
-                bid = data['quote']['bp']
-                ask = data['quote']['ap']
-                return (bid + ask) / 2  # Mid price
+            print(f"Alpaca API response for {symbol}: {response.status_code}")
+            
+            if 'quote' in data and data['quote']:
+                quote = data['quote']
+                bid = float(quote.get('bp', 0))
+                ask = float(quote.get('ap', 0))
+                
+                if bid > 0 and ask > 0:
+                    mid_price = (bid + ask) / 2
+                    print(f"Real-time price for {symbol}: ${mid_price:.2f} (Bid: ${bid}, Ask: ${ask})")
+                    return round(mid_price, 2)
         
-        # Fallback: Generate realistic price based on symbol
+        print(f"API call failed for {symbol} (Status: {response.status_code}) - using fallback")
         return generate_realistic_price(symbol)
         
     except Exception as e:
-        print(f"Error getting stock price for {symbol}: {str(e)}")
+        print(f"Error getting stock price for {symbol}: {str(e)} - using fallback")
         return generate_realistic_price(symbol)
 
 def generate_realistic_price(symbol):
