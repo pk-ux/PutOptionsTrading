@@ -23,14 +23,14 @@
         ]
     },
     "options_strategy": {
-        "max_dte": 15,
-        "min_dte": 15,
-        "min_volume": 30,
-        "min_open_interest": 10
+        "max_dte": 45,
+        "min_dte": 7,
+        "min_volume": 1,
+        "min_open_interest": 1
     },
     "screening_criteria": {
-        "min_annualized_return": 20.0,
-        "min_delta": -0.2,
+        "min_annualized_return": 10.0,
+        "min_delta": -0.3,
         "max_delta": -0.05
     },
     "output": {
