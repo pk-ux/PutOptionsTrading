@@ -335,24 +335,40 @@ with tab1:
 with tab2:
     st.header("Screening Criteria Configuration")
     
-    # Clean card styling
+    # Dark card styling matching page theme
     st.markdown("""
     <style>
-    .settings-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-        margin-bottom: 1rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    .stApp > div {
+        padding-top: 0rem;
     }
-    .full-width-card {
-        background: white;
+    div[data-testid="stVerticalBlock"] > div.settings-card {
+        background: #262730;
         padding: 1.5rem;
         border-radius: 8px;
-        border: 1px solid #e0e0e0;
+        border: 1px solid #464853;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    div[data-testid="stVerticalBlock"] > div.full-width-card {
+        background: #262730;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #464853;
         margin-bottom: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .settings-card h3, .full-width-card h3 {
+        color: #FAFAFA !important;
+        margin-top: 0;
+    }
+    .settings-card .stTextArea label, .full-width-card .stTextArea label {
+        color: #FAFAFA !important;
+    }
+    .settings-card .stNumberInput label, .full-width-card .stNumberInput label {
+        color: #FAFAFA !important;
+    }
+    .settings-card p, .full-width-card p {
+        color: #FAFAFA !important;
     }
     </style>
     """, unsafe_allow_html=True)
