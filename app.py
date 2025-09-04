@@ -189,6 +189,10 @@ def display_results_table(df, symbol_name):
         'open_interest': 'Open Interest',
         'impliedVolatility': 'Implied Volatility (%)',
         'delta': 'Delta',
+        'gamma': 'Gamma',
+        'theta': 'Theta',
+        'vega': 'Vega',
+        'rho': 'Rho',
         'annualized_return': 'Annualized Return (%)',
         'expiry': 'Expiration Date',
         'calendar_days': 'DTE'
@@ -207,7 +211,15 @@ def display_results_table(df, symbol_name):
     if 'Option Price' in display_df.columns:
         display_df['Option Price'] = display_df['Option Price'].apply(lambda x: f"{x:.2f}")
     if 'Delta' in display_df.columns:
-        display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.2f}")
+        display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.3f}")
+    if 'Gamma' in display_df.columns:
+        display_df['Gamma'] = display_df['Gamma'].apply(lambda x: f"{x:.4f}")
+    if 'Theta' in display_df.columns:
+        display_df['Theta'] = display_df['Theta'].apply(lambda x: f"{x:.4f}")
+    if 'Vega' in display_df.columns:
+        display_df['Vega'] = display_df['Vega'].apply(lambda x: f"{x:.4f}")
+    if 'Rho' in display_df.columns:
+        display_df['Rho'] = display_df['Rho'].apply(lambda x: f"{x:.4f}")
     if 'Annualized Return (%)' in display_df.columns:
         display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].apply(lambda x: f"{x:.2f}")
     if 'Implied Volatility (%)' in display_df.columns:

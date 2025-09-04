@@ -510,7 +510,7 @@ def format_output(filtered_df, current_price=None):
     
     display_columns = [
         'symbol', 'current_price', 'strike', 'lastPrice', 'volume', 'open_interest',
-        'impliedVolatility', 'delta', 'annualized_return', 'expiry', 'calendar_days'
+        'impliedVolatility', 'delta', 'gamma', 'theta', 'vega', 'rho', 'annualized_return', 'expiry', 'calendar_days'
     ]
     
     formatted = filtered_df.copy()

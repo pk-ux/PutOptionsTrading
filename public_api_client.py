@@ -173,9 +173,29 @@ class PublicAPIClient:
                 
                 for put in puts:
                     if put.get('outcome') == 'SUCCESS':
+                        # Get real Greeks data for this option
+                        option_symbol = put['instrument']['symbol']
+                        greeks_result = self.get_option_greeks(option_symbol)
+                        
+                        if greeks_result.get('success'):
+                            delta = greeks_result['delta']
+                            implied_vol = greeks_result['impliedVolatility']
+                            gamma = greeks_result['gamma']
+                            theta = greeks_result['theta']
+                            vega = greeks_result['vega']
+                            rho = greeks_result['rho']
+                        else:
+                            # Fallback values if Greeks not available
+                            delta = -0.5
+                            implied_vol = 0.25
+                            gamma = 0.0
+                            theta = 0.0
+                            vega = 0.0
+                            rho = 0.0
+                        
                         option_data = {
                             'symbol': symbol,
-                            'strike': self._extract_strike_from_symbol(put['instrument']['symbol']),
+                            'strike': self._extract_strike_from_symbol(option_symbol),
                             'expiry': expiration_date,
                             'lastPrice': float(put.get('last', 0)),
                             'bid': float(put.get('bid', 0)),
@@ -183,9 +203,13 @@ class PublicAPIClient:
                             'volume': put.get('volume', 0),
                             'openInterest': put.get('openInterest', 0),
                             'open_interest': put.get('openInterest', 0),
-                            'impliedVolatility': 0.25,  # Will need to calculate or get from greeks
-                            'delta': -0.5,  # Will need to get from greeks endpoint
-                            'option_symbol': put['instrument']['symbol']
+                            'impliedVolatility': float(implied_vol),
+                            'delta': float(delta),
+                            'gamma': float(gamma),
+                            'theta': float(theta),
+                            'vega': float(vega),
+                            'rho': float(rho),
+                            'option_symbol': option_symbol
                         }
                         options_data.append(option_data)
                 
