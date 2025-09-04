@@ -127,9 +127,6 @@ def screen_symbols(symbols):
     st.session_state.total_symbols = len(symbols)
     st.session_state.completed_symbols = 0
     
-    # Force UI refresh to show the layout change
-    st.rerun()
-    
     total_symbols = len(symbols)
     results = {}
     
@@ -350,8 +347,8 @@ with tab1:
     # Action buttons
     st.subheader("Screening Actions")
     
-    # Buttons in a single row - two main buttons plus stop button when processing
-    col1, col2, col3 = st.columns([1, 1, 1])
+    # Buttons in a single row - compact left-aligned layout
+    col1, col2, col3, col4 = st.columns([2, 2, 1.5, 6])
     
     with col1:
         if st.button("Screen Selected Stock", disabled=st.session_state.processing):
@@ -375,6 +372,9 @@ with tab1:
                 st.rerun()
         else:
             st.write("")  # Empty space when not processing
+    
+    with col4:
+        st.write("")  # Spacer to push buttons left
     
     # Progress bar and status - left aligned below buttons
     if st.session_state.processing:
