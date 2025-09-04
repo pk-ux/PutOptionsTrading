@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from scipy.stats import norm
 import yfinance as yf
 from alpaca_mcp_client import alpaca_mcp_client
+from public_api_client import public_client
 
 def load_config():
     """Load configuration from JSON file, create default if not exists"""
@@ -104,10 +105,32 @@ def get_stock_price_yahoo(symbol):
         print(f"Error getting Yahoo Finance price for {symbol}: {str(e)} - using fallback")
         return generate_realistic_price(symbol)
 
+def get_stock_price_public(symbol):
+    """Get current stock price using Public.com API"""
+    try:
+        if not public_client:
+            print(f"Public.com client not available for {symbol}")
+            return None
+            
+        quote = public_client.get_stock_quote(symbol)
+        
+        if quote.get('success') and quote.get('mid_price', 0) > 0:
+            return round(quote['mid_price'], 2)
+        else:
+            error_msg = quote.get('error', 'Unknown error')
+            print(f"ERROR: Failed to get Public.com price for {symbol}: {error_msg}")
+            return None
+        
+    except Exception as e:
+        print(f"ERROR: Exception getting Public.com price for {symbol}: {str(e)}")
+        return None
+
 def get_stock_price(symbol, api_source="alpaca"):
     """Get current stock price using selected API source"""
     if api_source.lower() == "yahoo":
         return get_stock_price_yahoo(symbol)
+    elif api_source.lower() == "public":
+        return get_stock_price_public(symbol)
     else:
         return get_stock_price_alpaca(symbol)
 

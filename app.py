@@ -248,9 +248,9 @@ st.title("Put Options Screener")
 st.sidebar.header("Data Sources")
 api_source = st.sidebar.radio(
     "Stock Prices Source:",
-    options=["alpaca", "yahoo"],
-    format_func=lambda x: "Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)",
-    index=0 if st.session_state.api_source == "alpaca" else 1,
+    options=["alpaca", "yahoo", "public"],
+    format_func=lambda x: "Alpaca (Real-time)" if x == "alpaca" else ("Yahoo Finance (Free)" if x == "yahoo" else "Public.com (Real-time)"),
+    index=0 if st.session_state.api_source == "alpaca" else (1 if st.session_state.api_source == "yahoo" else 2),
     help="Choose your data source for stock prices"
 )
 st.session_state.api_source = api_source
@@ -260,6 +260,9 @@ st.sidebar.markdown("**Data Sources Used:**")
 if api_source == "alpaca":
     st.sidebar.markdown("• **Stock Prices**: Alpaca (Real-time)")
     st.sidebar.markdown("• **Options Data**: Alpaca (Real chains)")
+elif api_source == "public":
+    st.sidebar.markdown("• **Stock Prices**: Public.com (Real-time)")
+    st.sidebar.markdown("• **Options Data**: Public.com (Real chains)")
 else:
     st.sidebar.markdown("• **Stock Prices**: Yahoo Finance")
     st.sidebar.markdown("• **Options Data**: Yahoo Finance (Real chains)")
@@ -270,6 +273,11 @@ if api_source == "alpaca":
         st.sidebar.success("Alpaca API Connected - Using same source for both stock prices and options data")
     else:
         st.sidebar.error("Alpaca API Keys Missing")
+elif api_source == "public":
+    if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
+        st.sidebar.success("Public.com API Connected - Using same source for both stock prices and options data")
+    else:
+        st.sidebar.error("Public.com API Keys Missing")
 else:
     st.sidebar.success("Yahoo Finance Connected - Using same source for both stock prices and options data")
 
