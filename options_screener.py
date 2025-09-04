@@ -355,11 +355,83 @@ def get_options_chain_alpaca(symbol, config):
         print(f"Error getting Alpaca MCP options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
 
+def get_options_chain_public(symbol, config):
+    """Get real options chain data using Public.com API"""
+    try:
+        if not public_client:
+            print(f"Public.com client not available for {symbol}")
+            return pd.DataFrame()
+            
+        print(f"Fetching REAL options data for {symbol} from Public.com...")
+        
+        max_dte = config['options_strategy']['max_dte']
+        min_dte = config['options_strategy'].get('min_dte', 0)
+        
+        # Get available expiration dates
+        exp_result = public_client.get_option_expirations(symbol)
+        if not exp_result.get('success'):
+            print(f"Failed to get expirations for {symbol}: {exp_result.get('error')}")
+            return pd.DataFrame()
+        
+        # Filter expirations by DTE range
+        expirations = exp_result['expirations']
+        today = datetime.now().date()
+        
+        valid_expirations = []
+        for exp_date_str in expirations:
+            exp_date = datetime.strptime(exp_date_str, '%Y-%m-%d').date()
+            dte = (exp_date - today).days
+            if min_dte <= dte <= max_dte:
+                valid_expirations.append(exp_date_str)
+        
+        print(f"Found {len(valid_expirations)} valid expirations for {symbol} (DTE: {min_dte}-{max_dte})")
+        
+        if not valid_expirations:
+            print(f"No expirations found for {symbol} in DTE range {min_dte}-{max_dte}")
+            return pd.DataFrame()
+        
+        # Get option chains for each valid expiration
+        all_options = pd.DataFrame()
+        
+        for exp_date in valid_expirations:
+            try:
+                chain_result = public_client.get_option_chain(symbol, exp_date)
+                
+                if chain_result.get('success') and not chain_result['options'].empty:
+                    options_df = chain_result['options']
+                    
+                    # Calculate DTE
+                    exp_date_dt = datetime.strptime(exp_date, '%Y-%m-%d').date()
+                    options_df['calendar_days'] = (exp_date_dt - today).days
+                    
+                    all_options = pd.concat([all_options, options_df], ignore_index=True)
+                    print(f"Retrieved {len(options_df)} put options for {symbol} {exp_date}")
+                else:
+                    print(f"No options data for {symbol} {exp_date}")
+                    
+            except Exception as e:
+                print(f"Error processing {symbol} for date {exp_date}: {str(e)}")
+                continue
+        
+        if not all_options.empty:
+            print(f"Retrieved {len(all_options)} REAL put options from Public.com for {symbol}")
+        else:
+            print(f"No options data found for {symbol}")
+            
+        return all_options
+        
+    except Exception as e:
+        print(f"Error getting Public.com options chain for {symbol}: {str(e)}")
+        return pd.DataFrame()
+
 def get_options_chain(symbol, config, api_source="alpaca"):
     """Get real options chain data using selected API source"""
     if api_source.lower() == "yahoo":
         print(f"Using Yahoo Finance for options data for {symbol}")
         return get_options_chain_yahoo(symbol, config)
+    elif api_source.lower() == "public":
+        print(f"Using Public.com for options data for {symbol}")
+        return get_options_chain_public(symbol, config)
     else:
         print(f"Using Alpaca API for options data for {symbol}")
         return get_options_chain_alpaca(symbol, config)
