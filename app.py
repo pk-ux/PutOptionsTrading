@@ -367,6 +367,16 @@ with tab1:
                 screen_symbols(st.session_state.config['data']['symbols'])
             else:
                 st.warning("No stock symbols available.")
+    
+    # Stop button - prominently displayed during processing
+    if st.session_state.processing:
+        st.markdown("---")
+        col_stop1, col_stop2, col_stop3 = st.columns([1, 2, 1])
+        with col_stop2:
+            if st.button("🛑 STOP PROCESSING", type="secondary", key="stop_btn_prominent", use_container_width=True):
+                stop_processing()
+                st.rerun()
+        st.info("⏳ Processing in progress... Click STOP button above to cancel.")
 
 # Screening Criteria Tab
 with tab2:
@@ -496,12 +506,4 @@ if st.session_state.progress_messages:
             else:
                 st.info(message)
 
-# Processing indicator with stop button
-if st.session_state.processing:
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.info("Processing in progress...")
-    with col2:
-        if st.button("🛑 Stop Processing", type="secondary", key="stop_btn"):
-            stop_processing()
-            st.rerun()
+# Remove old processing indicator - now handled in main section
