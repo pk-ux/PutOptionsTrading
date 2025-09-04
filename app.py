@@ -33,6 +33,9 @@ if 'current_symbol' not in st.session_state:
 if 'processing' not in st.session_state:
     st.session_state.processing = False
 
+if 'stop_processing' not in st.session_state:
+    st.session_state.stop_processing = False
+
 if 'progress_messages' not in st.session_state:
     st.session_state.progress_messages = []
 
@@ -106,9 +109,15 @@ def process_single_symbol(symbol, config, api_source="alpaca"):
     except Exception as e:
         return None, f"Error processing {symbol}: {str(e)}"
 
+def stop_processing():
+    """Stop the current processing"""
+    st.session_state.stop_processing = True
+    st.session_state.processing = False
+
 def screen_symbols(symbols):
     """Screen multiple symbols with progress tracking"""
     st.session_state.processing = True
+    st.session_state.stop_processing = False
     st.session_state.results = {}
     st.session_state.progress_messages = []
     
@@ -129,6 +138,14 @@ def screen_symbols(symbols):
         
         completed = 0
         for future in concurrent.futures.as_completed(future_to_symbol):
+            # Check if user wants to stop
+            if st.session_state.stop_processing:
+                # Cancel remaining futures
+                for remaining_future in future_to_symbol:
+                    remaining_future.cancel()
+                st.session_state.progress_messages.append("Processing stopped by user")
+                break
+                
             symbol = future_to_symbol[future]
             completed += 1
             
@@ -479,6 +496,12 @@ if st.session_state.progress_messages:
             else:
                 st.info(message)
 
-# Processing indicator
+# Processing indicator with stop button
 if st.session_state.processing:
-    st.info("Processing in progress...")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.info("Processing in progress...")
+    with col2:
+        if st.button("🛑 Stop Processing", type="secondary", key="stop_btn"):
+            stop_processing()
+            st.rerun()
