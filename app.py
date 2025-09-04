@@ -37,7 +37,7 @@ if 'progress_messages' not in st.session_state:
     st.session_state.progress_messages = []
 
 if 'api_source' not in st.session_state:
-    st.session_state.api_source = "alpaca"
+    st.session_state.api_source = "public"
 
 def update_config():
     """Update configuration from form inputs"""
