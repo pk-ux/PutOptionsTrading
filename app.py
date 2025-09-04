@@ -335,27 +335,27 @@ with tab1:
 with tab2:
     st.header("Screening Criteria Configuration")
     
-    # Dark card styling matching page theme
+    # Card styling with better contrast
     st.markdown("""
     <style>
     .stApp > div {
         padding-top: 0rem;
     }
     div[data-testid="stVerticalBlock"] > div.settings-card {
-        background: #262730;
+        background: #3a3b47;
         padding: 1.5rem;
         border-radius: 8px;
-        border: 1px solid #464853;
+        border: 1px solid #5a5b67;
         margin-bottom: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
     div[data-testid="stVerticalBlock"] > div.full-width-card {
-        background: #262730;
+        background: #3a3b47;
         padding: 1.5rem;
         border-radius: 8px;
-        border: 1px solid #464853;
+        border: 1px solid #5a5b67;
         margin-bottom: 1.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
     .settings-card h3, .full-width-card h3 {
         color: #FAFAFA !important;
