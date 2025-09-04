@@ -171,47 +171,77 @@ class PublicAPIClient:
                 # Convert to DataFrame format compatible with existing code
                 options_data = []
                 
-                for put in puts:
-                    if put.get('outcome') == 'SUCCESS':
-                        # Get real Greeks data for this option
-                        option_symbol = put['instrument']['symbol']
-                        greeks_result = self.get_option_greeks(option_symbol)
-                        
-                        if greeks_result.get('success'):
-                            delta = greeks_result['delta']
-                            implied_vol = greeks_result['impliedVolatility']
-                            gamma = greeks_result['gamma']
-                            theta = greeks_result['theta']
-                            vega = greeks_result['vega']
-                            rho = greeks_result['rho']
-                        else:
-                            # Fallback values if Greeks not available
-                            delta = -0.5
-                            implied_vol = 0.25
-                            gamma = 0.0
-                            theta = 0.0
-                            vega = 0.0
-                            rho = 0.0
-                        
-                        option_data = {
-                            'symbol': symbol,
-                            'strike': self._extract_strike_from_symbol(option_symbol),
-                            'expiry': expiration_date,
-                            'lastPrice': float(put.get('last', 0)),
-                            'bid': float(put.get('bid', 0)),
-                            'ask': float(put.get('ask', 0)),
-                            'volume': put.get('volume', 0),
-                            'openInterest': put.get('openInterest', 0),
-                            'open_interest': put.get('openInterest', 0),
-                            'impliedVolatility': float(implied_vol),
-                            'delta': float(delta),
-                            'gamma': float(gamma),
-                            'theta': float(theta),
-                            'vega': float(vega),
-                            'rho': float(rho),
-                            'option_symbol': option_symbol
-                        }
-                        options_data.append(option_data)
+                # Process only top liquid options to reduce API calls
+                liquid_puts = [p for p in puts if p.get('outcome') == 'SUCCESS' and p.get('volume', 0) > 0]
+                liquid_puts = sorted(liquid_puts, key=lambda x: x.get('volume', 0), reverse=True)[:20]  # Top 20 by volume
+                
+                # Process remaining puts without Greeks for volume = 0
+                remaining_puts = [p for p in puts if p.get('outcome') == 'SUCCESS' and p.get('volume', 0) == 0][:30]  # Up to 30 more
+                
+                # Process liquid options with real Greeks
+                for put in liquid_puts:
+                    option_symbol = put['instrument']['symbol']
+                    greeks_result = self.get_option_greeks(option_symbol)
+                    
+                    if greeks_result.get('success'):
+                        delta = greeks_result['delta']
+                        implied_vol = greeks_result['impliedVolatility']
+                        gamma = greeks_result['gamma']
+                        theta = greeks_result['theta']
+                        vega = greeks_result['vega']
+                        rho = greeks_result['rho']
+                    else:
+                        # Fallback values if Greeks not available
+                        delta = -0.5
+                        implied_vol = 0.25
+                        gamma = 0.0
+                        theta = 0.0
+                        vega = 0.0
+                        rho = 0.0
+                    
+                    option_data = {
+                        'symbol': symbol,
+                        'strike': self._extract_strike_from_symbol(option_symbol),
+                        'expiry': expiration_date,
+                        'lastPrice': float(put.get('last', 0)),
+                        'bid': float(put.get('bid', 0)),
+                        'ask': float(put.get('ask', 0)),
+                        'volume': put.get('volume', 0),
+                        'openInterest': put.get('openInterest', 0),
+                        'open_interest': put.get('openInterest', 0),
+                        'impliedVolatility': float(implied_vol),
+                        'delta': float(delta),
+                        'gamma': float(gamma),
+                        'theta': float(theta),
+                        'vega': float(vega),
+                        'rho': float(rho),
+                        'option_symbol': option_symbol
+                    }
+                    options_data.append(option_data)
+                
+                # Process remaining options with fallback Greeks (faster)
+                for put in remaining_puts:
+                    option_symbol = put['instrument']['symbol']
+                    
+                    option_data = {
+                        'symbol': symbol,
+                        'strike': self._extract_strike_from_symbol(option_symbol),
+                        'expiry': expiration_date,
+                        'lastPrice': float(put.get('last', 0)),
+                        'bid': float(put.get('bid', 0)),
+                        'ask': float(put.get('ask', 0)),
+                        'volume': put.get('volume', 0),
+                        'openInterest': put.get('openInterest', 0),
+                        'open_interest': put.get('openInterest', 0),
+                        'impliedVolatility': 0.25,  # Default IV
+                        'delta': -0.5,  # Default delta for puts
+                        'gamma': 0.0,
+                        'theta': 0.0,
+                        'vega': 0.0,
+                        'rho': 0.0,
+                        'option_symbol': option_symbol
+                    }
+                    options_data.append(option_data)
                 
                 df = pd.DataFrame(options_data)
                 print(f"Processed {len(df)} put options for {symbol}")
@@ -224,12 +254,20 @@ class PublicAPIClient:
             print(f"ERROR: Exception getting option chain for {symbol}: {str(e)}")
             return {'success': False, 'error': str(e)}
     
-    def get_option_greeks(self, option_symbol):
-        """Get option greeks for a specific option symbol"""
+    def get_option_greeks(self, option_symbol, retry_count=0):
+        """Get option greeks for a specific option symbol with rate limiting"""
+        import time
+        
         try:
+            # Add delay between calls to respect rate limits
+            if hasattr(self, '_last_greeks_call'):
+                time_since_last = time.time() - self._last_greeks_call
+                if time_since_last < 0.3:  # 300ms minimum between calls
+                    time.sleep(0.3 - time_since_last)
+            
             url = f"{self.base_url}/option-details/{self.account_id}/{option_symbol}/greeks"
             
-            print(f"Fetching greeks for {option_symbol} from Public.com...")
+            self._last_greeks_call = time.time()
             response = requests.get(url, headers=self._get_headers())
             
             if response.status_code == 200:
@@ -241,10 +279,18 @@ class PublicAPIClient:
                     'theta': float(data.get('theta', 0)),
                     'vega': float(data.get('vega', 0)),
                     'rho': float(data.get('rho', 0)),
-                    'impliedVolatility': float(data.get('impliedVolatility', 0))
+                    'impliedVolatility': float(data.get('impliedVolatility', 0.25))
                 }
+            elif response.status_code == 429 and retry_count < 2:
+                # Rate limited - wait and retry with exponential backoff
+                wait_time = (retry_count + 1) * 2.0  # 2s, 4s delays
+                print(f"Rate limited on {option_symbol}, waiting {wait_time}s...")
+                time.sleep(wait_time)
+                return self.get_option_greeks(option_symbol, retry_count + 1)
             else:
-                print(f"ERROR: Failed to get greeks for {option_symbol}: {response.status_code}")
+                # Don't spam logs with rate limit errors
+                if response.status_code != 429:
+                    print(f"ERROR: Failed to get greeks for {option_symbol}: {response.status_code}")
                 return {'success': False, 'error': f'API request failed: {response.status_code}'}
                 
         except Exception as e:
