@@ -121,47 +121,43 @@ def screen_symbols(symbols):
     st.session_state.results = {}
     st.session_state.progress_messages = []
     
-    # Create progress bar and status container (will be positioned in main UI)
-    # These will be updated from the main UI section
-    st.session_state.progress_bar = None
-    st.session_state.status_container = None
+    # Initialize progress tracking
+    st.session_state.current_progress = 0.0
+    st.session_state.current_status = "Starting screening..."
+    st.session_state.total_symbols = len(symbols)
+    st.session_state.completed_symbols = 0
+    
+    # Force UI refresh to show the layout change
+    st.rerun()
     
     total_symbols = len(symbols)
     results = {}
     
-    # Process symbols using ThreadPoolExecutor for parallel processing
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        # Submit all tasks
-        future_to_symbol = {
-            executor.submit(process_single_symbol, symbol, st.session_state.config, st.session_state.api_source): symbol 
-            for symbol in symbols
-        }
+    # Process symbols one by one to show real-time progress
+    for i, symbol in enumerate(symbols):
+        # Check if user wants to stop
+        if st.session_state.stop_processing:
+            st.session_state.progress_messages.append("Processing stopped by user")
+            break
+            
+        # Update progress
+        progress = i / total_symbols
+        st.session_state.current_progress = progress
+        st.session_state.current_status = f"Processing {symbol}... ({i+1}/{total_symbols})"
+        st.session_state.completed_symbols = i
         
-        completed = 0
-        for future in concurrent.futures.as_completed(future_to_symbol):
-            # Check if user wants to stop
-            if st.session_state.stop_processing:
-                # Cancel remaining futures
-                for remaining_future in future_to_symbol:
-                    remaining_future.cancel()
-                st.session_state.progress_messages.append("Processing stopped by user")
-                break
-                
-            symbol = future_to_symbol[future]
-            completed += 1
-            
-            # Update progress (will be handled in main UI)
-            progress = completed / total_symbols
-            st.session_state.current_progress = progress
-            st.session_state.current_status = f"Processing {symbol}... ({completed}/{total_symbols})"
-            
-            try:
-                result, message = future.result()
-                if result is not None and not result.empty:
-                    results[symbol] = result
-                st.session_state.progress_messages.append(message)
-            except Exception as e:
-                st.session_state.progress_messages.append(f"Error processing {symbol}: {str(e)}")
+        try:
+            result, message = process_single_symbol(symbol, st.session_state.config, st.session_state.api_source)
+            if result is not None and not result.empty:
+                results[symbol] = result
+            st.session_state.progress_messages.append(message)
+        except Exception as e:
+            st.session_state.progress_messages.append(f"Error processing {symbol}: {str(e)}")
+        
+        # Update final progress for this symbol
+        progress = (i + 1) / total_symbols
+        st.session_state.current_progress = progress
+        st.session_state.completed_symbols = i + 1
     
     # Create summary if multiple symbols processed
     if len(symbols) > 1 and results:
@@ -383,11 +379,19 @@ with tab1:
     # Progress bar and status - left aligned below buttons
     if st.session_state.processing:
         if hasattr(st.session_state, 'current_progress') and hasattr(st.session_state, 'current_status'):
-            st.progress(st.session_state.current_progress)
-            st.info(st.session_state.current_status)
+            # Show progress bar
+            progress_val = getattr(st.session_state, 'current_progress', 0.0)
+            status_text = getattr(st.session_state, 'current_status', "Processing...")
+            
+            st.progress(progress_val)
+            st.info(f"🔄 {status_text}")
         else:
-            st.progress(0)
-            st.info("Initializing screening...")
+            st.progress(0.0)
+            st.info("🔄 Initializing screening...")
+    elif hasattr(st.session_state, 'results') and st.session_state.results:
+        # Show completion status when done
+        num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
+        st.success(f"✅ Screening completed! Found results for {num_results} symbols.")
 
 # Screening Criteria Tab
 with tab2:
