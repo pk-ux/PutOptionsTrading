@@ -335,130 +335,93 @@ with tab1:
 with tab2:
     st.header("Screening Criteria Configuration")
     
-    # Light cards with strong contrast
-    st.markdown("""
-    <style>
-    .stApp > div {
-        padding-top: 0rem;
-    }
-    div[data-testid="stVerticalBlock"] > div.settings-card {
-        background: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 8px;
-        border: 1px solid #dee2e6;
-        margin-bottom: 1rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    div[data-testid="stVerticalBlock"] > div.full-width-card {
-        background: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 8px;
-        border: 1px solid #dee2e6;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .settings-card h3, .full-width-card h3 {
-        color: #212529 !important;
-        margin-top: 0;
-    }
-    .settings-card .stTextArea label, .full-width-card .stTextArea label {
-        color: #212529 !important;
-    }
-    .settings-card .stNumberInput label, .full-width-card .stNumberInput label {
-        color: #212529 !important;
-    }
-    .settings-card p, .full-width-card p {
-        color: #212529 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Stock Symbols - Full Width Container
+    with st.container():
+        st.subheader("Stock Symbols")
+        current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
+        symbols_input = st.text_area(
+            "Stock Symbols (comma-separated):",
+            value=current_symbols_text,
+            help="Enter stock symbols separated by commas (e.g., AAPL, TSLA, NVDA, SPY)",
+            key='symbols_text_input',
+            height=100
+        )
     
-    # Stock Symbols - Full Width Card
-    st.markdown('<div class="full-width-card">', unsafe_allow_html=True)
-    st.subheader("Stock Symbols")
-    current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
-    symbols_input = st.text_area(
-        "Stock Symbols (comma-separated):",
-        value=current_symbols_text,
-        help="Enter stock symbols separated by commas (e.g., AAPL, TSLA, NVDA, SPY)",
-        key='symbols_text_input',
-        height=100
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.divider()
     
-    # Side-by-side cards for settings
+    # Side-by-side containers for settings
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown('<div class="settings-card">', unsafe_allow_html=True)
-        st.subheader("Options Strategy Settings")
-        
-        max_dte = st.number_input(
-            "Max Days to Expiration:",
-            min_value=1,
-            max_value=365,
-            value=st.session_state.config['options_strategy']['max_dte'],
-            key='max_dte'
-        )
-        
-        min_dte = st.number_input(
-            "Min Days to Expiration:",
-            min_value=0,
-            max_value=364,
-            value=st.session_state.config['options_strategy'].get('min_dte', 0),
-            key='min_dte'
-        )
-        
-        min_volume = st.number_input(
-            "Minimum Volume:",
-            min_value=0,
-            max_value=10000,
-            value=st.session_state.config['options_strategy']['min_volume'],
-            key='min_volume'
-        )
-        
-        min_oi = st.number_input(
-            "Minimum Open Interest:",
-            min_value=0,
-            max_value=10000,
-            value=st.session_state.config['options_strategy']['min_open_interest'],
-            key='min_oi'
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
+        with st.container():
+            st.subheader("Options Strategy Settings")
+            
+            max_dte = st.number_input(
+                "Max Days to Expiration:",
+                min_value=1,
+                max_value=365,
+                value=st.session_state.config['options_strategy']['max_dte'],
+                key='max_dte'
+            )
+            
+            min_dte = st.number_input(
+                "Min Days to Expiration:",
+                min_value=0,
+                max_value=364,
+                value=st.session_state.config['options_strategy'].get('min_dte', 0),
+                key='min_dte'
+            )
+            
+            min_volume = st.number_input(
+                "Minimum Volume:",
+                min_value=0,
+                max_value=10000,
+                value=st.session_state.config['options_strategy']['min_volume'],
+                key='min_volume'
+            )
+            
+            min_oi = st.number_input(
+                "Minimum Open Interest:",
+                min_value=0,
+                max_value=10000,
+                value=st.session_state.config['options_strategy']['min_open_interest'],
+                key='min_oi'
+            )
     
     with col2:
-        st.markdown('<div class="settings-card">', unsafe_allow_html=True)
-        st.subheader("Screening Criteria Settings")
-        
-        min_return = st.number_input(
-            "Min Annualized Return (%):",
-            min_value=0.0,
-            max_value=100.0,
-            value=float(st.session_state.config['screening_criteria']['min_annualized_return']),
-            key='min_return'
-        )
-        
-        st.write("Delta Range:")
-        col2a, col2b = st.columns(2)
-        with col2a:
-            min_delta = st.number_input(
-                "Min Delta:",
-                min_value=-1.0,
-                max_value=0.0,
-                value=float(st.session_state.config['screening_criteria']['min_delta']),
-                step=0.05,
-                key='min_delta'
+        with st.container():
+            st.subheader("Screening Criteria Settings")
+            
+            min_return = st.number_input(
+                "Min Annualized Return (%):",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(st.session_state.config['screening_criteria']['min_annualized_return']),
+                key='min_return'
             )
-        with col2b:
-            max_delta = st.number_input(
-                "Max Delta:",
-                min_value=-1.0,
-                max_value=0.0,
-                value=float(st.session_state.config['screening_criteria']['max_delta']),
-                step=0.05,
-                key='max_delta'
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.write("Delta Range:")
+            col2a, col2b = st.columns(2)
+            with col2a:
+                min_delta = st.number_input(
+                    "Min Delta:",
+                    min_value=-1.0,
+                    max_value=0.0,
+                    value=float(st.session_state.config['screening_criteria']['min_delta']),
+                    step=0.05,
+                    key='min_delta'
+                )
+            with col2b:
+                max_delta = st.number_input(
+                    "Max Delta:",
+                    min_value=-1.0,
+                    max_value=0.0,
+                    value=float(st.session_state.config['screening_criteria']['max_delta']),
+                    step=0.05,
+                    key='max_delta'
+                )
+    
+    st.divider()
     
     # Save settings button
     if st.button("Save Settings"):
