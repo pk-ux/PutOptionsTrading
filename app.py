@@ -335,40 +335,40 @@ with tab1:
 with tab2:
     st.header("Screening Criteria Configuration")
     
-    # Card styling with better contrast
+    # Light cards with strong contrast
     st.markdown("""
     <style>
     .stApp > div {
         padding-top: 0rem;
     }
     div[data-testid="stVerticalBlock"] > div.settings-card {
-        background: #3a3b47;
+        background: #f8f9fa;
         padding: 1.5rem;
         border-radius: 8px;
-        border: 1px solid #5a5b67;
+        border: 1px solid #dee2e6;
         margin-bottom: 1rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     div[data-testid="stVerticalBlock"] > div.full-width-card {
-        background: #3a3b47;
+        background: #f8f9fa;
         padding: 1.5rem;
         border-radius: 8px;
-        border: 1px solid #5a5b67;
+        border: 1px solid #dee2e6;
         margin-bottom: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .settings-card h3, .full-width-card h3 {
-        color: #FAFAFA !important;
+        color: #212529 !important;
         margin-top: 0;
     }
     .settings-card .stTextArea label, .full-width-card .stTextArea label {
-        color: #FAFAFA !important;
+        color: #212529 !important;
     }
     .settings-card .stNumberInput label, .full-width-card .stNumberInput label {
-        color: #FAFAFA !important;
+        color: #212529 !important;
     }
     .settings-card p, .full-width-card p {
-        color: #FAFAFA !important;
+        color: #212529 !important;
     }
     </style>
     """, unsafe_allow_html=True)
