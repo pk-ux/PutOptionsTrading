@@ -121,9 +121,10 @@ def screen_symbols(symbols):
     st.session_state.results = {}
     st.session_state.progress_messages = []
     
-    # Create progress bar and status container
-    progress_bar = st.progress(0)
-    status_container = st.empty()
+    # Create progress bar and status container (will be positioned in main UI)
+    # These will be updated from the main UI section
+    st.session_state.progress_bar = None
+    st.session_state.status_container = None
     
     total_symbols = len(symbols)
     results = {}
@@ -149,10 +150,10 @@ def screen_symbols(symbols):
             symbol = future_to_symbol[future]
             completed += 1
             
-            # Update progress
+            # Update progress (will be handled in main UI)
             progress = completed / total_symbols
-            progress_bar.progress(progress)
-            status_container.info(f"Processing {symbol}... ({completed}/{total_symbols})")
+            st.session_state.current_progress = progress
+            st.session_state.current_status = f"Processing {symbol}... ({completed}/{total_symbols})"
             
             try:
                 result, message = future.result()
@@ -176,9 +177,9 @@ def screen_symbols(symbols):
     st.session_state.results = results
     st.session_state.processing = False
     
-    # Clear progress indicators
-    progress_bar.empty()
-    status_container.empty()
+    # Clear progress tracking
+    st.session_state.current_progress = 0
+    st.session_state.current_status = ""
     
     # Show completion message
     if results:
@@ -352,7 +353,9 @@ with tab1:
     
     # Action buttons
     st.subheader("Screening Actions")
-    col1, col2 = st.columns(2)
+    
+    # Buttons in a single row - two main buttons plus stop button when processing
+    col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
         if st.button("Screen Selected Stock", disabled=st.session_state.processing):
@@ -368,15 +371,23 @@ with tab1:
             else:
                 st.warning("No stock symbols available.")
     
-    # Stop button - prominently displayed during processing
-    if st.session_state.processing:
-        st.markdown("---")
-        col_stop1, col_stop2, col_stop3 = st.columns([1, 2, 1])
-        with col_stop2:
-            if st.button("🛑 STOP PROCESSING", type="secondary", key="stop_btn_prominent", use_container_width=True):
+    # Stop button appears in third column when processing
+    with col3:
+        if st.session_state.processing:
+            if st.button("🛑 Stop", type="secondary", key="stop_btn_inline"):
                 stop_processing()
                 st.rerun()
-        st.info("⏳ Processing in progress... Click STOP button above to cancel.")
+        else:
+            st.write("")  # Empty space when not processing
+    
+    # Progress bar and status - left aligned below buttons
+    if st.session_state.processing:
+        if hasattr(st.session_state, 'current_progress') and hasattr(st.session_state, 'current_status'):
+            st.progress(st.session_state.current_progress)
+            st.info(st.session_state.current_status)
+        else:
+            st.progress(0)
+            st.info("Initializing screening...")
 
 # Screening Criteria Tab
 with tab2:
