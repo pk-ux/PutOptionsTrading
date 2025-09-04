@@ -335,10 +335,31 @@ with tab1:
 with tab2:
     st.header("Screening Criteria Configuration")
     
-    # Stock Symbol Management Section
-    st.subheader("Stock Symbols")
+    # Clean card styling
+    st.markdown("""
+    <style>
+    .settings-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .full-width-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    # Simple comma-separated text area for symbols
+    # Stock Symbols - Full Width Card
+    st.markdown('<div class="full-width-card">', unsafe_allow_html=True)
+    st.subheader("Stock Symbols")
     current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
     symbols_input = st.text_area(
         "Stock Symbols (comma-separated):",
@@ -347,12 +368,13 @@ with tab2:
         key='symbols_text_input',
         height=100
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    st.divider()
-    
+    # Side-by-side cards for settings
     col1, col2 = st.columns(2)
     
     with col1:
+        st.markdown('<div class="settings-card">', unsafe_allow_html=True)
         st.subheader("Options Strategy Settings")
         
         max_dte = st.number_input(
@@ -386,8 +408,10 @@ with tab2:
             value=st.session_state.config['options_strategy']['min_open_interest'],
             key='min_oi'
         )
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
+        st.markdown('<div class="settings-card">', unsafe_allow_html=True)
         st.subheader("Screening Criteria Settings")
         
         min_return = st.number_input(
@@ -418,6 +442,7 @@ with tab2:
                 step=0.05,
                 key='max_delta'
             )
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Save settings button
     if st.button("Save Settings"):
