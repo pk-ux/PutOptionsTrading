@@ -1,25 +1,28 @@
 {
     "data": {
         "symbols": [
+            "SPY",
+            "QQQ",
+            "AVGO",
+            "TSLA",
+            "META",
             "AAPL",
             "MSFT",
             "GOOGL",
-            "SPY",
-            "QQQ",
-            "TSLA",
+            "AMZN",
             "APP",
             "IBIT",
             "PLTR",
-            "AVGO",
             "MSTR",
             "COIN",
             "NVDA",
             "AMD",
-            "INTC",
-            "META",
             "CRWV",
             "CRCL",
-            "HOOD"
+            "HOOD",
+            "NBIS",
+            "IREN",
+            "APLD"
         ]
     },
     "options_strategy": {
@@ -29,7 +32,7 @@
         "min_open_interest": 10
     },
     "screening_criteria": {
-        "min_annualized_return": 20.0,
+        "min_annualized_return": 15.0,
         "min_delta": -0.2,
         "max_delta": -0.05
     },

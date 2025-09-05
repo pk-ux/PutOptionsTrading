@@ -116,13 +116,16 @@ def screen_symbols(symbols):
     st.rerun()
     
 def run_screening_process():
-    """Background process for screening symbols"""
+    """Background process for screening symbols with real-time results updates"""
     if not hasattr(st.session_state, 'symbols_to_screen'):
         return
         
     symbols = st.session_state.symbols_to_screen
     total_symbols = len(symbols)
-    results = {}
+    
+    # Initialize results if not already done
+    if not hasattr(st.session_state, 'results'):
+        st.session_state.results = {}
     
     # Update progress placeholders if they exist
     if hasattr(st.session_state, 'progress_placeholder') and hasattr(st.session_state, 'status_placeholder'):
@@ -143,7 +146,23 @@ def run_screening_process():
             try:
                 result, message = process_single_symbol(symbol, st.session_state.config, st.session_state.api_source)
                 if result is not None and not result.empty:
-                    results[symbol] = result
+                    # Update results immediately for real-time display
+                    st.session_state.results[symbol] = result
+                    
+                    # Create/update summary for multiple symbols
+                    if len(symbols) > 1:
+                        summary_rows = []
+                        for processed_symbol in st.session_state.results.keys():
+                            if processed_symbol != 'Summary' and processed_symbol in st.session_state.results:
+                                summary_rows.append(st.session_state.results[processed_symbol].iloc[0])
+                        
+                        if summary_rows:
+                            summary_df = pd.DataFrame(summary_rows)
+                            st.session_state.results['Summary'] = summary_df
+                    
+                    # Force UI refresh to show new results immediately
+                    st.rerun()
+                    
                 st.session_state.progress_messages.append(message)
             except Exception as e:
                 st.session_state.progress_messages.append(f"Error processing {symbol}: {str(e)}")
@@ -156,19 +175,7 @@ def run_screening_process():
         st.session_state.progress_placeholder.empty()
         st.session_state.status_placeholder.empty()
     
-    # Create summary if multiple symbols processed
-    if len(symbols) > 1 and results:
-        summary_rows = []
-        for sym in symbols:
-            if sym in results:
-                summary_rows.append(results[sym].iloc[0])
-        
-        if summary_rows:
-            summary_df = pd.DataFrame(summary_rows)
-            results['Summary'] = summary_df
-    
     # Complete processing
-    st.session_state.results = results
     st.session_state.processing = False
     
     # Clean up
