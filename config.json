@@ -13,13 +13,13 @@
             "AVGO",
             "MSTR",
             "COIN",
-            "SVXY",
             "NVDA",
             "AMD",
             "INTC",
             "META",
             "CRWV",
-            "CRCL"
+            "CRCL",
+            "HOOD"
         ]
     },
     "options_strategy": {

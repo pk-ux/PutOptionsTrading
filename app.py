@@ -52,16 +52,6 @@ def update_config():
     st.session_state.config['screening_criteria']['min_delta'] = st.session_state.min_delta
     st.session_state.config['screening_criteria']['max_delta'] = st.session_state.max_delta
 
-def add_symbol():
-    """Add new symbol to the list"""
-    new_symbol = st.session_state.new_symbol_input.strip().upper()
-    if new_symbol and new_symbol not in st.session_state.config['data']['symbols']:
-        st.session_state.config['data']['symbols'].append(new_symbol)
-        save_config_file(st.session_state.config)
-        st.success(f"Added {new_symbol} to stock list")
-        st.session_state.new_symbol_input = ""
-    elif new_symbol in st.session_state.config['data']['symbols']:
-        st.info(f"{new_symbol} is already in the list")
 
 def save_settings():
     """Save current settings to config file"""
@@ -339,21 +329,6 @@ with tab1:
     
     with col2:
         st.write("") # Spacer
-    
-    # Add new stock section
-    st.subheader("Add New Stock")
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        new_symbol = st.text_input(
-            "Enter stock symbol (e.g., AAPL):",
-            key='new_symbol_input'
-        )
-    
-    with col2:
-        st.write("")  # Spacer for alignment
-        if st.button("Add", key='add_button'):
-            add_symbol()
     
     # Action buttons
     st.subheader("Screening Actions")
