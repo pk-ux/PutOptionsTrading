@@ -160,8 +160,8 @@ def run_screening_process():
                             summary_df = pd.DataFrame(summary_rows)
                             st.session_state.results['Summary'] = summary_df
                     
-                    # Force UI refresh to show new results immediately
-                    st.rerun()
+                    # DON'T call st.rerun() here - it restarts the entire process!
+                    # Results will show after all processing is complete
                     
                 st.session_state.progress_messages.append(message)
             except Exception as e:
