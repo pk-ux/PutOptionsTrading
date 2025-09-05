@@ -116,45 +116,55 @@ def stop_processing():
 
 def screen_symbols(symbols):
     """Screen multiple symbols with progress tracking"""
+    # Initialize processing state
     st.session_state.processing = True
     st.session_state.stop_processing = False
     st.session_state.results = {}
     st.session_state.progress_messages = []
     
-    # Initialize progress tracking
-    st.session_state.current_progress = 0.0
-    st.session_state.current_status = "Starting screening..."
-    st.session_state.total_symbols = len(symbols)
-    st.session_state.completed_symbols = 0
+    # Force UI refresh to show progress bar
+    st.rerun()
     
+def run_screening_process():
+    """Background process for screening symbols"""
+    if not hasattr(st.session_state, 'symbols_to_screen'):
+        return
+        
+    symbols = st.session_state.symbols_to_screen
     total_symbols = len(symbols)
     results = {}
     
-    # Process symbols one by one to show real-time progress
-    for i, symbol in enumerate(symbols):
-        # Check if user wants to stop
-        if st.session_state.stop_processing:
-            st.session_state.progress_messages.append("Processing stopped by user")
-            break
+    # Update progress placeholders if they exist
+    if hasattr(st.session_state, 'progress_placeholder') and hasattr(st.session_state, 'status_placeholder'):
+        # Process symbols one by one with progress updates
+        for i, symbol in enumerate(symbols):
+            # Check if user wants to stop
+            if st.session_state.get('stop_processing', False):
+                st.session_state.status_placeholder.warning("🛑 Processing stopped by user")
+                break
+                
+            # Update progress
+            progress = i / total_symbols
+            status_text = f"Processing {symbol}... ({i+1}/{total_symbols})"
             
-        # Update progress
-        progress = i / total_symbols
-        st.session_state.current_progress = progress
-        st.session_state.current_status = f"Processing {symbol}... ({i+1}/{total_symbols})"
-        st.session_state.completed_symbols = i
+            st.session_state.progress_placeholder.progress(progress)
+            st.session_state.status_placeholder.info(f"🔄 {status_text}")
+            
+            try:
+                result, message = process_single_symbol(symbol, st.session_state.config, st.session_state.api_source)
+                if result is not None and not result.empty:
+                    results[symbol] = result
+                st.session_state.progress_messages.append(message)
+            except Exception as e:
+                st.session_state.progress_messages.append(f"Error processing {symbol}: {str(e)}")
+            
+            # Update final progress for this symbol
+            progress = (i + 1) / total_symbols
+            st.session_state.progress_placeholder.progress(progress)
         
-        try:
-            result, message = process_single_symbol(symbol, st.session_state.config, st.session_state.api_source)
-            if result is not None and not result.empty:
-                results[symbol] = result
-            st.session_state.progress_messages.append(message)
-        except Exception as e:
-            st.session_state.progress_messages.append(f"Error processing {symbol}: {str(e)}")
-        
-        # Update final progress for this symbol
-        progress = (i + 1) / total_symbols
-        st.session_state.current_progress = progress
-        st.session_state.completed_symbols = i + 1
+        # Clear progress placeholders
+        st.session_state.progress_placeholder.empty()
+        st.session_state.status_placeholder.empty()
     
     # Create summary if multiple symbols processed
     if len(symbols) > 1 and results:
@@ -167,18 +177,16 @@ def screen_symbols(symbols):
             summary_df = pd.DataFrame(summary_rows)
             results['Summary'] = summary_df
     
+    # Complete processing
     st.session_state.results = results
     st.session_state.processing = False
     
-    # Clear progress tracking
-    st.session_state.current_progress = 0
-    st.session_state.current_status = ""
-    
-    # Show completion message
-    if results:
-        st.success(f"Screening completed! Found results for {len([k for k in results.keys() if k != 'Summary'])} symbols.")
-    else:
-        st.warning("No qualifying options found for any symbol.")
+    # Clean up
+    del st.session_state.symbols_to_screen
+    if hasattr(st.session_state, 'progress_placeholder'):
+        del st.session_state.progress_placeholder
+    if hasattr(st.session_state, 'status_placeholder'):
+        del st.session_state.status_placeholder
 
 def display_results_table(df, symbol_name):
     """Display results table with color coding"""
@@ -353,6 +361,7 @@ with tab1:
     with col1:
         if st.button("Screen Selected Stock", disabled=st.session_state.processing):
             if selected_symbol:
+                st.session_state.symbols_to_screen = [selected_symbol]
                 screen_symbols([selected_symbol])
             else:
                 st.warning("Please select a stock symbol first.")
@@ -360,6 +369,7 @@ with tab1:
     with col2:
         if st.button("Screen All Stocks", disabled=st.session_state.processing):
             if st.session_state.config['data']['symbols']:
+                st.session_state.symbols_to_screen = st.session_state.config['data']['symbols']
                 screen_symbols(st.session_state.config['data']['symbols'])
             else:
                 st.warning("No stock symbols available.")
@@ -377,18 +387,22 @@ with tab1:
         st.write("")  # Spacer to push buttons left
     
     # Progress bar and status - left aligned below buttons
-    if st.session_state.processing:
-        if hasattr(st.session_state, 'current_progress') and hasattr(st.session_state, 'current_status'):
-            # Show progress bar
-            progress_val = getattr(st.session_state, 'current_progress', 0.0)
-            status_text = getattr(st.session_state, 'current_status', "Processing...")
-            
-            st.progress(progress_val)
-            st.info(f"🔄 {status_text}")
-        else:
-            st.progress(0.0)
-            st.info("🔄 Initializing screening...")
-    elif hasattr(st.session_state, 'results') and st.session_state.results:
+    if hasattr(st.session_state, 'processing') and st.session_state.processing:
+        # Create progress placeholders
+        progress_placeholder = st.empty()
+        status_placeholder = st.empty()
+        
+        # Show immediate progress feedback
+        progress_placeholder.progress(0.0)
+        status_placeholder.info("🔄 Starting screening...")
+        
+        # Store placeholders for updates
+        st.session_state.progress_placeholder = progress_placeholder
+        st.session_state.status_placeholder = status_placeholder
+        
+        # Run the actual screening process
+        run_screening_process()
+    elif hasattr(st.session_state, 'results') and st.session_state.results and not st.session_state.get('processing', False):
         # Show completion status when done
         num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
         st.success(f"✅ Screening completed! Found results for {num_results} symbols.")
