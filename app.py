@@ -15,9 +15,8 @@ import os
 # Page configuration
 st.set_page_config(
     page_title="Put Options Screener",
-    page_icon="P",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon=":chart_with_downwards_trend:",
+    layout="wide"
 )
 
 # Initialize session state
@@ -270,244 +269,233 @@ def display_results_table(df, symbol_name):
     else:
         styled_df = display_df.style
     
-    st.dataframe(styled_df, width='stretch')
+    st.dataframe(styled_df, use_container_width=True)
 
-# Main application layout
-st.title("Put Options Screener")
+# Main application layout with Stockpeers-inspired design
+st.markdown("# 📉 Put Options Screener")
+st.markdown("*Discover profitable put option opportunities with real-time market data.*")
 
-# API Data Source Selector
-st.sidebar.header("Data Sources")
-api_source = st.sidebar.radio(
-    "Stock Prices Source:",
-    options=["alpaca", "yahoo", "public"],
-    format_func=lambda x: "Alpaca (Real-time)" if x == "alpaca" else ("Yahoo Finance (Free)" if x == "yahoo" else "Public.com (Real-time)"),
-    index=0 if st.session_state.api_source == "alpaca" else (1 if st.session_state.api_source == "yahoo" else 2),
-    help="Choose your data source for stock prices"
-)
-st.session_state.api_source = api_source
+st.markdown("")  # Add some space
 
-# Show what data comes from which API
-st.sidebar.markdown("**Data Sources Used:**")
-if api_source == "alpaca":
-    st.sidebar.markdown("• **Stock Prices**: Alpaca (Real-time)")
-    st.sidebar.markdown("• **Options Data**: Alpaca (Real chains)")
-elif api_source == "public":
-    st.sidebar.markdown("• **Stock Prices**: Public.com (Real-time)")
-    st.sidebar.markdown("• **Options Data**: Public.com (Real chains)")
-else:
-    st.sidebar.markdown("• **Stock Prices**: Yahoo Finance")
-    st.sidebar.markdown("• **Options Data**: Yahoo Finance (Real chains)")
+# Create main columns layout
+cols = st.columns([1, 3])
 
-# Show API connection status
-if api_source == "alpaca":
-    if os.getenv('ALPACA_API_KEY'):
-        st.sidebar.success("Alpaca API Connected - Using same source for both stock prices and options data")
+# Left sidebar for controls
+left_panel = cols[0].container(border=True, height="stretch", vertical_alignment="center")
+
+# Right panel for results (always create to avoid layout shift)
+right_panel = cols[1].container(border=True, height="stretch", vertical_alignment="top")
+
+# API Data Source Selector in left panel
+with left_panel:
+    st.subheader("⚙️ Configuration")
+    
+    # API Source selection
+    api_source = st.radio(
+        "Data Source:",
+        options=["public", "alpaca", "yahoo"],
+        format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
+        index=0 if st.session_state.api_source == "public" else (1 if st.session_state.api_source == "alpaca" else 2),
+        help="Choose your data source for stock prices and options data"
+    )
+    st.session_state.api_source = api_source
+    
+    # Show connection status
+    if api_source == "alpaca":
+        if os.getenv('ALPACA_API_KEY'):
+            st.success("✅ Alpaca Connected")
+        else:
+            st.error("❌ Alpaca Keys Missing")
+    elif api_source == "public":
+        if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
+            st.success("✅ Public.com Connected")
+        else:
+            st.error("❌ Public.com Keys Missing")
     else:
-        st.sidebar.error("Alpaca API Keys Missing")
-elif api_source == "public":
-    if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
-        st.sidebar.success("Public.com API Connected - Using same source for both stock prices and options data")
-    else:
-        st.sidebar.error("Public.com API Keys Missing")
-else:
-    st.sidebar.success("Yahoo Finance Connected - Using same source for both stock prices and options data")
+        st.success("✅ Yahoo Finance Connected")
 
-st.sidebar.info("**All data is real** - Selected API source provides both stock prices and options data consistently.")
+# Stock Selection in left panel
+with left_panel:
 
-st.sidebar.divider()
-
-# Create tabs for main interface
-tab1, tab2 = st.tabs(["Stock Symbols", "Screening Criteria"])
-
-# Stock Symbols Tab
-with tab1:
-    st.header("Stock Symbol Selection")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Existing stock dropdown
-        selected_symbol = st.selectbox(
-            "Select Stock:",
-            options=st.session_state.config['data']['symbols'],
-            key='symbol_selector'
-        )
-        st.session_state.current_symbol = selected_symbol
-    
-    with col2:
-        st.write("") # Spacer
+    # Stock selection  
+    selected_symbol = st.selectbox(
+        "Stock Symbol:",
+        options=st.session_state.config['data']['symbols'],
+        key='symbol_selector',
+        placeholder="Choose a stock to screen"
+    )
+    st.session_state.current_symbol = selected_symbol
     
     # Action buttons
-    st.subheader("Screening Actions")
+    st.subheader("▶️ Actions")
     
-    # Buttons in a single row - compact left-aligned layout
-    col1, col2, col3, col4 = st.columns([2, 2, 1.5, 6])
-    
-    with col1:
-        if st.button("Screen Selected Stock", disabled=st.session_state.processing):
-            if selected_symbol:
-                st.session_state.symbols_to_screen = [selected_symbol]
-                screen_symbols([selected_symbol])
-            else:
-                st.warning("Please select a stock symbol first.")
-    
-    with col2:
-        if st.button("Screen All Stocks", disabled=st.session_state.processing):
-            if st.session_state.config['data']['symbols']:
-                st.session_state.symbols_to_screen = st.session_state.config['data']['symbols']
-                screen_symbols(st.session_state.config['data']['symbols'])
-            else:
-                st.warning("No stock symbols available.")
-    
-    # Stop button appears in third column when processing
-    with col3:
-        if st.session_state.processing:
-            if st.button("🛑 Stop", type="secondary", key="stop_btn_inline"):
-                stop_processing()
-                st.rerun()
+    if st.button("Screen Selected Stock", disabled=st.session_state.processing, use_container_width=True):
+        if selected_symbol:
+            st.session_state.symbols_to_screen = [selected_symbol]
+            screen_symbols([selected_symbol])
         else:
-            st.write("")  # Empty space when not processing
+            st.warning("Please select a stock symbol first.")
     
-    with col4:
-        st.write("")  # Spacer to push buttons left
+    if st.button("Screen All Stocks", disabled=st.session_state.processing, use_container_width=True):
+        if st.session_state.config['data']['symbols']:
+            st.session_state.symbols_to_screen = st.session_state.config['data']['symbols']
+            screen_symbols(st.session_state.config['data']['symbols'])
+        else:
+            st.warning("No stock symbols available.")
     
-    # Progress bar and status - left aligned below buttons
-    if hasattr(st.session_state, 'processing') and st.session_state.processing:
-        # Create progress placeholders
-        progress_placeholder = st.empty()
-        status_placeholder = st.empty()
-        
-        # Show immediate progress feedback
-        progress_placeholder.progress(0.0)
-        status_placeholder.info("🔄 Starting screening...")
-        
-        # Store placeholders for updates
-        st.session_state.progress_placeholder = progress_placeholder
-        st.session_state.status_placeholder = status_placeholder
-        
-        # Run the actual screening process
-        run_screening_process()
-    elif hasattr(st.session_state, 'results') and st.session_state.results and not st.session_state.get('processing', False):
-        # Show completion status when done
-        num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
-        st.success(f"✅ Screening completed! Found results for {num_results} symbols.")
+    # Stop button when processing
+    if st.session_state.processing:
+        if st.button("🛑 Stop Screening", type="secondary", use_container_width=True, key="stop_btn_inline"):
+            stop_processing()
+            st.rerun()
 
-# Screening Criteria Tab
-with tab2:
-    st.header("Screening Criteria Configuration")
+# Progress tracking
+if hasattr(st.session_state, 'processing') and st.session_state.processing:
+    # Create progress placeholders
+    progress_placeholder = st.empty()
+    status_placeholder = st.empty()
     
-    # Stock Symbols - Full Width Container
-    with st.container():
-        st.subheader("Stock Symbols")
-        current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
-        symbols_input = st.text_area(
-            "Stock Symbols (comma-separated):",
-            value=current_symbols_text,
-            help="Enter stock symbols separated by commas (e.g., AAPL, TSLA, NVDA, SPY)",
-            key='symbols_text_input',
-            height=100
-        )
+    # Show immediate progress feedback
+    progress_placeholder.progress(0.0)
+    status_placeholder.info("🔄 Starting screening...")
     
-    st.divider()
+    # Store placeholders for updates
+    st.session_state.progress_placeholder = progress_placeholder
+    st.session_state.status_placeholder = status_placeholder
     
-    # Side-by-side containers for settings
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        with st.container():
-            st.subheader("Options Strategy Settings")
-            
-            max_dte = st.number_input(
-                "Max Days to Expiration:",
-                min_value=1,
-                max_value=365,
-                value=st.session_state.config['options_strategy']['max_dte'],
-                key='max_dte'
-            )
-            
-            min_dte = st.number_input(
-                "Min Days to Expiration:",
-                min_value=0,
-                max_value=364,
-                value=st.session_state.config['options_strategy'].get('min_dte', 0),
-                key='min_dte'
-            )
-            
-            min_volume = st.number_input(
-                "Minimum Volume:",
-                min_value=0,
-                max_value=10000,
-                value=st.session_state.config['options_strategy']['min_volume'],
-                key='min_volume'
-            )
-            
-            min_oi = st.number_input(
-                "Minimum Open Interest:",
-                min_value=0,
-                max_value=10000,
-                value=st.session_state.config['options_strategy']['min_open_interest'],
-                key='min_oi'
-            )
-    
-    with col2:
-        with st.container():
-            st.subheader("Screening Criteria Settings")
-            
-            min_return = st.number_input(
-                "Min Annualized Return (%):",
-                min_value=0.0,
-                max_value=100.0,
-                value=float(st.session_state.config['screening_criteria']['min_annualized_return']),
-                key='min_return'
-            )
-            
-            st.write("Delta Range:")
-            col2a, col2b = st.columns(2)
-            with col2a:
-                min_delta = st.number_input(
-                    "Min Delta:",
-                    min_value=-1.0,
-                    max_value=0.0,
-                    value=float(st.session_state.config['screening_criteria']['min_delta']),
-                    step=0.05,
-                    key='min_delta'
-                )
-            with col2b:
-                max_delta = st.number_input(
-                    "Max Delta:",
-                    min_value=-1.0,
-                    max_value=0.0,
-                    value=float(st.session_state.config['screening_criteria']['max_delta']),
-                    step=0.05,
-                    key='max_delta'
-                )
-    
-    st.divider()
-    
-    # Save settings button
-    if st.button("Save Settings"):
-        save_settings()
+    # Run the actual screening process
+    run_screening_process()
+elif hasattr(st.session_state, 'results') and st.session_state.results and not st.session_state.get('processing', False):
+    # Show completion status when done
+    num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
+    st.success(f"✅ Screening completed! Found results for {num_results} symbols.")
 
-# Results Display Section
-if st.session_state.results:
-    st.header("Screening Results")
+# Create the right panel for results when we have data
+if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
+    right_panel = cols[1].container(border=True, height="stretch", vertical_alignment="top")
+
+# Bottom configuration section
+""  # Add space
+
+st.markdown("## 🔧 Screening Configuration")
+
+# Configuration in clean containers
+config_cols = st.columns(3)
+
+# Stock Symbols Configuration
+with config_cols[0].container(border=True):
+    st.subheader("📋 Stock Symbols")
+    current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
+    symbols_input = st.text_area(
+        "Enter symbols (comma-separated):",
+        value=current_symbols_text,
+        help="e.g., AAPL, TSLA, NVDA, SPY",
+        key='symbols_text_input',
+        height=100
+    )
+
+# Options Strategy Settings  
+with config_cols[1].container(border=True):
+    st.subheader("📅 Strategy Settings")
     
-    # Results selection dropdown
-    result_options = list(st.session_state.results.keys())
-    if 'Summary' in result_options:
-        # Move Summary to front
-        result_options.remove('Summary')
-        result_options.insert(0, 'Summary')
-    
-    selected_result = st.selectbox(
-        "Select results to display:",
-        options=result_options,
-        key='results_selector'
+    max_dte = st.number_input(
+        "Max Days to Expiration:",
+        min_value=1,
+        max_value=365,
+        value=st.session_state.config['options_strategy']['max_dte'],
+        key='max_dte'
     )
     
-    # Display selected results
-    if selected_result and selected_result in st.session_state.results:
-        display_results_table(st.session_state.results[selected_result], selected_result)
+    min_dte = st.number_input(
+        "Min Days to Expiration:",
+        min_value=0,
+        max_value=364,
+        value=st.session_state.config['options_strategy'].get('min_dte', 0),
+        key='min_dte'
+    )
+    
+    min_volume = st.number_input(
+        "Minimum Volume:",
+        min_value=0,
+        max_value=10000,
+        value=st.session_state.config['options_strategy']['min_volume'],
+        key='min_volume'
+    )
+    
+    min_oi = st.number_input(
+        "Minimum Open Interest:",
+        min_value=0,
+        max_value=10000,
+        value=st.session_state.config['options_strategy']['min_open_interest'],
+        key='min_oi'
+    )
+
+# Screening Criteria Settings
+with config_cols[2].container(border=True):
+    st.subheader("🔍 Screening Criteria")
+    
+    min_return = st.number_input(
+        "Min Annualized Return (%):",
+        min_value=0.0,
+        max_value=1000.0,
+        value=st.session_state.config['screening_criteria']['min_annualized_return'],
+        key='min_return'
+    )
+    
+    min_delta = st.number_input(
+        "Min Delta (absolute):",
+        min_value=0.0,
+        max_value=1.0,
+        value=abs(float(st.session_state.config['screening_criteria']['min_delta'])),
+        key='min_delta',
+        step=0.01
+    )
+    
+    max_delta = st.number_input(
+        "Max Delta (absolute):",
+        min_value=0.0,
+        max_value=1.0,
+        value=abs(float(st.session_state.config['screening_criteria']['max_delta'])),
+        key='max_delta',
+        step=0.01
+    )
+    
+    # Save button
+    if st.button("Save Settings", use_container_width=True):
+        save_settings()
+
+st.markdown("")  # Add space
+
+# Results display in right panel
+with right_panel:
+    if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
+        st.markdown("## 📊 Screening Results")
+        if 'Summary' in st.session_state.results and len(st.session_state.results) > 1:
+            st.subheader("📊 Summary")
+            display_results_table(st.session_state.results['Summary'], "Summary")
+            
+            st.markdown("")  # Space
+            
+            # Individual stock results in expandable sections
+            for symbol, data in st.session_state.results.items():
+                if symbol != 'Summary':
+                    with st.expander(f"📈 {symbol} Options", expanded=False):
+                        display_results_table(data, symbol)
+        else:
+            # Single stock result
+            for symbol, data in st.session_state.results.items():
+                if symbol != 'Summary':
+                    st.subheader(f"📈 {symbol} Options")
+                    display_results_table(data, symbol)
+    
+    elif not hasattr(st.session_state, 'results') or not st.session_state.results:
+        st.markdown("## 💡 Getting Started")
+        st.markdown("""
+        1. **Choose your data source** in the left panel
+        2. **Select a stock symbol** to screen
+        3. **Click "Screen Selected Stock"** or "Screen All Stocks"  
+        4. **Review results** and adjust configuration as needed
+        """)
 
 # Progress messages
 if st.session_state.progress_messages:

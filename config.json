@@ -32,7 +32,7 @@
         "min_open_interest": 10
     },
     "screening_criteria": {
-        "min_annualized_return": 15.0,
+        "min_annualized_return": 10.0,
         "min_delta": -0.2,
         "max_delta": -0.05
     },
