@@ -321,49 +321,59 @@ with actions_card:
 
 st.markdown("")  # Add space
 
-# Create left sidebar for configuration
-left_sidebar = st.sidebar
+# Create main columns layout  
+cols = st.columns([1, 3])
 
-# Stock Symbols Card (now in sidebar)
-with left_sidebar:
-    st.markdown("### 📋 Stock Symbols")
-    current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
-    symbols_input = st.text_area(
-        "Enter symbols (comma-separated):",
-        value=current_symbols_text,
-        help="e.g., AAPL, TSLA, NVDA, SPY",
-        key='symbols_text_input',
-        height=100
-    )
+# Left panel for controls
+left_panel = cols[0]
+
+# Right panel for results (always create to avoid layout shift)
+right_panel = cols[1].container(border=True, height="stretch", vertical_alignment="top")
+
+# Stock Symbols Card
+with left_panel:
+    stock_symbols_card = st.container(border=True)
+    with stock_symbols_card:
+        st.subheader("📋 Stock Symbols")
+        current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
+        symbols_input = st.text_area(
+            "Enter symbols (comma-separated):",
+            value=current_symbols_text,
+            help="e.g., AAPL, TSLA, NVDA, SPY",
+            key='symbols_text_input',
+            height=100
+        )
 
     st.markdown("")  # Add space
 
-    # Data Source Card (moved below Stock Symbols)
-    st.markdown("### 🔗 Data Source")
-    
-    # API Source selection
-    api_source = st.radio(
-        "Choose your data source:",
-        options=["public", "alpaca", "yahoo"],
-        format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
-        index=0 if st.session_state.api_source == "public" else (1 if st.session_state.api_source == "alpaca" else 2),
-        help="Choose your data source for stock prices and options data"
-    )
-    st.session_state.api_source = api_source
-    
-    # Show connection status
-    if api_source == "alpaca":
-        if os.getenv('ALPACA_API_KEY'):
-            st.success("✅ Alpaca Connected")
+    # Data Source Card (below Stock Symbols)
+    data_source_card = st.container(border=True)
+    with data_source_card:
+        st.subheader("🔗 Data Source")
+        
+        # API Source selection
+        api_source = st.radio(
+            "Choose your data source:",
+            options=["public", "alpaca", "yahoo"],
+            format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
+            index=0 if st.session_state.api_source == "public" else (1 if st.session_state.api_source == "alpaca" else 2),
+            help="Choose your data source for stock prices and options data"
+        )
+        st.session_state.api_source = api_source
+        
+        # Show connection status
+        if api_source == "alpaca":
+            if os.getenv('ALPACA_API_KEY'):
+                st.success("✅ Alpaca Connected")
+            else:
+                st.error("❌ Alpaca Keys Missing")
+        elif api_source == "public":
+            if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
+                st.success("✅ Public.com Connected")
+            else:
+                st.error("❌ Public.com Keys Missing")
         else:
-            st.error("❌ Alpaca Keys Missing")
-    elif api_source == "public":
-        if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
-            st.success("✅ Public.com Connected")
-        else:
-            st.error("❌ Public.com Keys Missing")
-    else:
-        st.success("✅ Yahoo Finance Connected")
+            st.success("✅ Yahoo Finance Connected")
 
 # Progress tracking
 if hasattr(st.session_state, 'processing') and st.session_state.processing:
@@ -392,10 +402,21 @@ st.markdown("")  # Add space
 st.markdown("## 🔧 Screening Configuration")
 
 # Configuration in clean containers
-config_cols = st.columns(2)
+config_cols = st.columns(3)
+
+# Stock Symbols Configuration - moved to config section
+with config_cols[0].container(border=True):
+    st.subheader("📋 Stock Symbols (Config)")
+    # Update symbols from text input
+    if symbols_input:
+        new_symbols = [s.strip().upper() for s in symbols_input.split(',') if s.strip()]
+        if new_symbols != st.session_state.config['data']['symbols']:
+            st.session_state.config['data']['symbols'] = new_symbols
+    
+    st.write(f"Current symbols: {', '.join(st.session_state.config['data']['symbols'])}")
 
 # Options Strategy Settings  
-with config_cols[0].container(border=True):
+with config_cols[1].container(border=True):
     st.subheader("📅 Strategy Settings")
     
     max_dte = st.number_input(
@@ -431,7 +452,7 @@ with config_cols[0].container(border=True):
     )
 
 # Screening Criteria Settings
-with config_cols[1].container(border=True):
+with config_cols[2].container(border=True):
     st.subheader("🔍 Screening Criteria")
     
     min_return = st.number_input(
@@ -466,11 +487,9 @@ with config_cols[1].container(border=True):
 
 st.markdown("")  # Add space
 
-# Results display - Full width
-if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
-    # Full width results container
-    results_container = st.container(border=True)
-    with results_container:
+# Results display in right panel
+with right_panel:
+    if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
         st.markdown("## 📊 Screening Results")
         if 'Summary' in st.session_state.results and len(st.session_state.results) > 1:
             st.subheader("📊 Summary")
@@ -489,14 +508,11 @@ if not st.session_state.processing and hasattr(st.session_state, 'results') and 
                 if symbol != 'Summary':
                     st.subheader(f"📈 {symbol} Options")
                     display_results_table(data, symbol)
-
-elif not hasattr(st.session_state, 'results') or not st.session_state.results:
-    # Full width getting started container
-    getting_started_container = st.container(border=True)
-    with getting_started_container:
+    
+    elif not hasattr(st.session_state, 'results') or not st.session_state.results:
         st.markdown("## 💡 Getting Started")
         st.markdown("""
-        1. **Choose your data source** in the sidebar
+        1. **Choose your data source** in the left panel
         2. **Select a stock symbol** in the Actions section above
         3. **Click "Screen Selected Stock"** or "Screen All Stocks"  
         4. **Review results** and adjust configuration as needed
