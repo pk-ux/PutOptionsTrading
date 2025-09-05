@@ -388,7 +388,7 @@ config_cols = st.columns(4)
 
 # Stock Symbols Configuration
 with config_cols[0].container(border=True):
-    st.subheader("📋 Stock Symbols (Config)")
+    st.subheader("📋 Stock Symbols")
     current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
     symbols_input = st.text_area(
         "Enter symbols (comma-separated):",
