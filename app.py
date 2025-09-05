@@ -327,23 +327,36 @@ if not st.session_state.processing and hasattr(st.session_state, 'results') and 
     results_container = st.container(border=True)
     with results_container:
         st.markdown("## 📊 Screening Results")
-        if 'Summary' in st.session_state.results and len(st.session_state.results) > 1:
-            st.subheader("📊 Summary")
-            display_results_table(st.session_state.results['Summary'], "Summary")
-            
-            st.markdown("")  # Space
-            
-            # Individual stock results in expandable sections
-            for symbol, data in st.session_state.results.items():
-                if symbol != 'Summary':
-                    with st.expander(f"📈 {symbol} Options", expanded=False):
-                        display_results_table(data, symbol)
-        else:
-            # Single stock result
-            for symbol, data in st.session_state.results.items():
-                if symbol != 'Summary':
-                    st.subheader(f"📈 {symbol} Options")
-                    display_results_table(data, symbol)
+        
+        # Create dropdown options - Summary + individual tickers
+        dropdown_options = []
+        if 'Summary' in st.session_state.results:
+            dropdown_options.append("Summary")
+        
+        # Add individual ticker options
+        for symbol in st.session_state.results.keys():
+            if symbol != 'Summary':
+                dropdown_options.append(symbol)
+        
+        # Default to Summary if available, otherwise first ticker
+        default_selection = "Summary" if "Summary" in dropdown_options else dropdown_options[0]
+        
+        # Initialize selected view in session state if not exists
+        if 'selected_results_view' not in st.session_state:
+            st.session_state.selected_results_view = default_selection
+        
+        # Dropdown to select which results to view
+        selected_view = st.selectbox(
+            "View results for:",
+            options=dropdown_options,
+            index=dropdown_options.index(st.session_state.selected_results_view) if st.session_state.selected_results_view in dropdown_options else 0,
+            key='results_view_selector'
+        )
+        st.session_state.selected_results_view = selected_view
+        
+        # Display the selected table
+        if selected_view in st.session_state.results:
+            display_results_table(st.session_state.results[selected_view], selected_view)
 
 elif not hasattr(st.session_state, 'results') or not st.session_state.results:
     # Full width getting started container
