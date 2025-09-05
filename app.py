@@ -321,14 +321,41 @@ with actions_card:
 
 st.markdown("")  # Add space
 
-# Store symbols input for later use
-current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
-symbols_input = st.text_input(
-    "Symbols will be configured in the configuration section below",
-    value=current_symbols_text,
-    disabled=True,
-    help="Use the configuration section below to modify symbols"
-)
+# Results display - Full width (moved to below Actions)
+if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
+    # Full width results container
+    results_container = st.container(border=True)
+    with results_container:
+        st.markdown("## 📊 Screening Results")
+        if 'Summary' in st.session_state.results and len(st.session_state.results) > 1:
+            st.subheader("📊 Summary")
+            display_results_table(st.session_state.results['Summary'], "Summary")
+            
+            st.markdown("")  # Space
+            
+            # Individual stock results in expandable sections
+            for symbol, data in st.session_state.results.items():
+                if symbol != 'Summary':
+                    with st.expander(f"📈 {symbol} Options", expanded=False):
+                        display_results_table(data, symbol)
+        else:
+            # Single stock result
+            for symbol, data in st.session_state.results.items():
+                if symbol != 'Summary':
+                    st.subheader(f"📈 {symbol} Options")
+                    display_results_table(data, symbol)
+
+elif not hasattr(st.session_state, 'results') or not st.session_state.results:
+    # Full width getting started container
+    getting_started_container = st.container(border=True)
+    with getting_started_container:
+        st.markdown("## 💡 Getting Started")
+        st.markdown("""
+        1. **Choose your data source** in the configuration section below
+        2. **Select a stock symbol** in the Actions section above
+        3. **Click "Screen Selected Stock"** or "Screen All Stocks"  
+        4. **Review results** and adjust configuration as needed
+        """)
 
 # Progress tracking
 if hasattr(st.session_state, 'processing') and st.session_state.processing:
@@ -477,41 +504,7 @@ with config_cols[3].container(border=True):
 
 st.markdown("")  # Add space
 
-# Results display - Full width
-if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
-    # Full width results container
-    results_container = st.container(border=True)
-    with results_container:
-        st.markdown("## 📊 Screening Results")
-        if 'Summary' in st.session_state.results and len(st.session_state.results) > 1:
-            st.subheader("📊 Summary")
-            display_results_table(st.session_state.results['Summary'], "Summary")
-            
-            st.markdown("")  # Space
-            
-            # Individual stock results in expandable sections
-            for symbol, data in st.session_state.results.items():
-                if symbol != 'Summary':
-                    with st.expander(f"📈 {symbol} Options", expanded=False):
-                        display_results_table(data, symbol)
-        else:
-            # Single stock result
-            for symbol, data in st.session_state.results.items():
-                if symbol != 'Summary':
-                    st.subheader(f"📈 {symbol} Options")
-                    display_results_table(data, symbol)
-
-elif not hasattr(st.session_state, 'results') or not st.session_state.results:
-    # Full width getting started container
-    getting_started_container = st.container(border=True)
-    with getting_started_container:
-        st.markdown("## 💡 Getting Started")
-        st.markdown("""
-        1. **Choose your data source** in the configuration section below
-        2. **Select a stock symbol** in the Actions section above
-        3. **Click "Screen Selected Stock"** or "Screen All Stocks"  
-        4. **Review results** and adjust configuration as needed
-        """)
+# Results section moved above - this space intentionally left empty
 
 # Progress messages
 if st.session_state.progress_messages:
