@@ -259,11 +259,11 @@ class PublicAPIClient:
         import time
         
         try:
-            # Add delay between calls to respect rate limits
+            # Add minimal delay between calls to respect rate limits
             if hasattr(self, '_last_greeks_call'):
                 time_since_last = time.time() - self._last_greeks_call
-                if time_since_last < 0.3:  # 300ms minimum between calls
-                    time.sleep(0.3 - time_since_last)
+                if time_since_last < 0.05:  # 50ms minimum between calls (much faster)
+                    time.sleep(0.05 - time_since_last)
             
             url = f"{self.base_url}/option-details/{self.account_id}/{option_symbol}/greeks"
             
@@ -282,8 +282,8 @@ class PublicAPIClient:
                     'impliedVolatility': float(data.get('impliedVolatility', 0.25))
                 }
             elif response.status_code == 429 and retry_count < 2:
-                # Rate limited - wait and retry with exponential backoff
-                wait_time = (retry_count + 1) * 2.0  # 2s, 4s delays
+                # Rate limited - wait and retry with faster backoff
+                wait_time = (retry_count + 1) * 0.5  # 0.5s, 1s delays (much faster)
                 print(f"Rate limited on {option_symbol}, waiting {wait_time}s...")
                 time.sleep(wait_time)
                 return self.get_option_greeks(option_symbol, retry_count + 1)
