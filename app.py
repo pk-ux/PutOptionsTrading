@@ -187,6 +187,9 @@ def run_screening_process():
         del st.session_state.progress_placeholder
     if hasattr(st.session_state, 'status_placeholder'):
         del st.session_state.status_placeholder
+    
+    # Force UI refresh to re-enable buttons
+    st.rerun()
 
 def display_results_table(df, symbol_name):
     """Display results table with color coding"""
