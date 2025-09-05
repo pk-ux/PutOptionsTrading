@@ -39,7 +39,7 @@ if 'progress_messages' not in st.session_state:
     st.session_state.progress_messages = []
 
 if 'api_source' not in st.session_state:
-    st.session_state.api_source = "public"
+    st.session_state.api_source = "yahoo"
 
 def update_config():
     """Update configuration from form inputs"""
@@ -413,7 +413,7 @@ with config_cols[1].container(border=True):
         "Choose your data source:",
         options=["public", "alpaca", "yahoo"],
         format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
-        index=0 if st.session_state.api_source == "public" else (1 if st.session_state.api_source == "alpaca" else 2),
+        index=2 if st.session_state.api_source == "yahoo" else (0 if st.session_state.api_source == "public" else 1),
         help="Choose your data source for stock prices and options data"
     )
     st.session_state.api_source = api_source
