@@ -269,7 +269,7 @@ def display_results_table(df, symbol_name):
     else:
         styled_df = display_df.style
     
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(styled_df, width="stretch")
 
 # Main application layout with Stockpeers-inspired design
 st.markdown("# 📉 Put Options Screener")
@@ -277,77 +277,96 @@ st.markdown("*Discover profitable put option opportunities with real-time market
 
 st.markdown("")  # Add some space
 
-# Create main columns layout
+# Actions Card - Top Left
+actions_card = st.container(border=True)
+with actions_card:
+    st.subheader("▶️ Actions")
+    
+    # Create columns for action buttons  
+    action_cols = st.columns(3)
+    
+    with action_cols[0]:
+        if st.button("Screen Selected Stock", disabled=st.session_state.processing, width="stretch"):
+            if st.session_state.current_symbol:
+                st.session_state.symbols_to_screen = [st.session_state.current_symbol]
+                screen_symbols([st.session_state.current_symbol])
+            else:
+                st.warning("Please select a stock symbol first.")
+    
+    with action_cols[1]:
+        if st.button("Screen All Stocks", disabled=st.session_state.processing, width="stretch"):
+            if st.session_state.config['data']['symbols']:
+                st.session_state.symbols_to_screen = st.session_state.config['data']['symbols']
+                screen_symbols(st.session_state.config['data']['symbols'])
+            else:
+                st.warning("No stock symbols available.")
+    
+    with action_cols[2]:
+        # Stop button when processing
+        if st.session_state.processing:
+            if st.button("🛑 Stop Screening", type="secondary", width="stretch", key="stop_btn_inline"):
+                stop_processing()
+                st.rerun()
+        else:
+            st.markdown("")  # Empty space when not processing
+
+st.markdown("")  # Add space
+
+# Create main columns layout  
 cols = st.columns([1, 3])
 
 # Left sidebar for controls
-left_panel = cols[0].container(border=True, height="stretch", vertical_alignment="center")
+left_panel = cols[0]
 
 # Right panel for results (always create to avoid layout shift)
 right_panel = cols[1].container(border=True, height="stretch", vertical_alignment="top")
 
-# API Data Source Selector in left panel
+# Data Source Card - Independent 
 with left_panel:
-    st.subheader("⚙️ Configuration")
-    
-    # API Source selection
-    api_source = st.radio(
-        "Data Source:",
-        options=["public", "alpaca", "yahoo"],
-        format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
-        index=0 if st.session_state.api_source == "public" else (1 if st.session_state.api_source == "alpaca" else 2),
-        help="Choose your data source for stock prices and options data"
-    )
-    st.session_state.api_source = api_source
-    
-    # Show connection status
-    if api_source == "alpaca":
-        if os.getenv('ALPACA_API_KEY'):
-            st.success("✅ Alpaca Connected")
+    data_source_card = st.container(border=True)
+    with data_source_card:
+        st.subheader("🔗 Data Source")
+        
+        # API Source selection
+        api_source = st.radio(
+            "Choose your data source:",
+            options=["public", "alpaca", "yahoo"],
+            format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
+            index=0 if st.session_state.api_source == "public" else (1 if st.session_state.api_source == "alpaca" else 2),
+            help="Choose your data source for stock prices and options data"
+        )
+        st.session_state.api_source = api_source
+        
+        # Show connection status
+        if api_source == "alpaca":
+            if os.getenv('ALPACA_API_KEY'):
+                st.success("✅ Alpaca Connected")
+            else:
+                st.error("❌ Alpaca Keys Missing")
+        elif api_source == "public":
+            if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
+                st.success("✅ Public.com Connected")
+            else:
+                st.error("❌ Public.com Keys Missing")
         else:
-            st.error("❌ Alpaca Keys Missing")
-    elif api_source == "public":
-        if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
-            st.success("✅ Public.com Connected")
-        else:
-            st.error("❌ Public.com Keys Missing")
-    else:
-        st.success("✅ Yahoo Finance Connected")
+            st.success("✅ Yahoo Finance Connected")
 
-# Stock Selection in left panel
+    st.markdown("")  # Add space
+
+# Stock Selection Card
 with left_panel:
-
-    # Stock selection  
-    selected_symbol = st.selectbox(
-        "Stock Symbol:",
-        options=st.session_state.config['data']['symbols'],
-        key='symbol_selector',
-        placeholder="Choose a stock to screen"
-    )
-    st.session_state.current_symbol = selected_symbol
-    
-    # Action buttons
-    st.subheader("▶️ Actions")
-    
-    if st.button("Screen Selected Stock", disabled=st.session_state.processing, use_container_width=True):
-        if selected_symbol:
-            st.session_state.symbols_to_screen = [selected_symbol]
-            screen_symbols([selected_symbol])
-        else:
-            st.warning("Please select a stock symbol first.")
-    
-    if st.button("Screen All Stocks", disabled=st.session_state.processing, use_container_width=True):
-        if st.session_state.config['data']['symbols']:
-            st.session_state.symbols_to_screen = st.session_state.config['data']['symbols']
-            screen_symbols(st.session_state.config['data']['symbols'])
-        else:
-            st.warning("No stock symbols available.")
-    
-    # Stop button when processing
-    if st.session_state.processing:
-        if st.button("🛑 Stop Screening", type="secondary", use_container_width=True, key="stop_btn_inline"):
-            stop_processing()
-            st.rerun()
+    stock_card = st.container(border=True)
+    with stock_card:
+        st.subheader("📈 Stock Selection")
+        
+        # Stock selection  
+        selected_symbol = st.selectbox(
+            "Choose stock to screen:",
+            options=st.session_state.config['data']['symbols'],
+            key='symbol_selector',
+            placeholder="Select a stock symbol"
+        )
+        st.session_state.current_symbol = selected_symbol
 
 # Progress tracking
 if hasattr(st.session_state, 'processing') and st.session_state.processing:
@@ -370,12 +389,8 @@ elif hasattr(st.session_state, 'results') and st.session_state.results and not s
     num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
     st.success(f"✅ Screening completed! Found results for {num_results} symbols.")
 
-# Create the right panel for results when we have data
-if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
-    right_panel = cols[1].container(border=True, height="stretch", vertical_alignment="top")
-
 # Bottom configuration section
-""  # Add space
+st.markdown("")  # Add space
 
 st.markdown("## 🔧 Screening Configuration")
 
@@ -461,7 +476,7 @@ with config_cols[2].container(border=True):
     )
     
     # Save button
-    if st.button("Save Settings", use_container_width=True):
+    if st.button("Save Settings", width="stretch"):
         save_settings()
 
 st.markdown("")  # Add space
