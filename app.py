@@ -178,6 +178,14 @@ def run_screening_process():
     # Complete processing
     st.session_state.processing = False
     
+    # Debug: Log what we found
+    num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
+    print(f"DEBUG: Screening complete. Found results for {num_results} symbols")
+    print(f"DEBUG: Results keys: {list(st.session_state.results.keys())}")
+    if st.session_state.results:
+        for symbol, data in st.session_state.results.items():
+            print(f"DEBUG: {symbol} has {len(data) if hasattr(data, '__len__') else 'N/A'} rows")
+    
     # Clean up
     del st.session_state.symbols_to_screen
     if hasattr(st.session_state, 'progress_placeholder'):
