@@ -112,8 +112,8 @@ def screen_symbols(symbols):
     st.session_state.progress_messages = []
     st.session_state.symbols_to_screen = symbols
     
-    # Don't call st.rerun() here - it interrupts the process
-    # Let the progress tracking section handle the UI updates
+    # Trigger UI refresh to start progress tracking
+    st.rerun()
     
 def run_screening_process():
     """Background process for screening symbols with real-time results updates"""
@@ -385,29 +385,9 @@ if hasattr(st.session_state, 'processing') and st.session_state.processing:
     st.session_state.progress_placeholder = progress_placeholder
     st.session_state.status_placeholder = status_placeholder
     
-    try:
-        # Run the actual screening process
-        run_screening_process()
-        
-        # Mark processing as complete
-        st.session_state.processing = False
-        
-        # Final progress update
-        if hasattr(st.session_state, 'results') and st.session_state.results:
-            num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
-            progress_placeholder.progress(1.0)
-            status_placeholder.success(f"✅ Screening completed! Found results for {num_results} symbols.")
-        else:
-            status_placeholder.warning("⚠️ Screening completed but no results found.")
-            
-    except Exception as e:
-        st.session_state.processing = False
-        status_placeholder.error(f"❌ Error during screening: {str(e)}")
-
-elif hasattr(st.session_state, 'results') and st.session_state.results and not st.session_state.get('processing', False):
-    # Show completion status when done
-    num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
-    st.success(f"✅ Screening completed! Found results for {num_results} symbols.")
+    # Run the actual screening process
+    # Note: run_screening_process() will set processing=False and call st.rerun() when done
+    run_screening_process()
 
 # Bottom configuration section
 st.markdown("")  # Add space
