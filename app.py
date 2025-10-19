@@ -214,8 +214,8 @@ def display_results_table(df, symbol_name):
         'strike': 'Strike Price',
         'lastPrice': 'Option Price',
         'volume': 'Volume',
-        'open_interest': 'Open Interest',
-        'impliedVolatility': 'Implied Volatility (%)',
+        'open_interest': 'OI',
+        'impliedVolatility': 'IV (%)',
         'delta': 'Delta',
         'gamma': 'Gamma',
         'theta': 'Theta',
@@ -250,12 +250,12 @@ def display_results_table(df, symbol_name):
         display_df['Rho'] = display_df['Rho'].apply(lambda x: f"{x:.4f}")
     if 'Annualized Return (%)' in display_df.columns:
         display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].apply(lambda x: f"{x:.2f}")
-    if 'Implied Volatility (%)' in display_df.columns:
-        display_df['Implied Volatility (%)'] = display_df['Implied Volatility (%)'].apply(lambda x: f"{x:.2f}")
+    if 'IV (%)' in display_df.columns:
+        display_df['IV (%)'] = display_df['IV (%)'].apply(lambda x: f"{x:.2f}")
     if 'Volume' in display_df.columns:
         display_df['Volume'] = display_df['Volume'].astype(int)
-    if 'Open Interest' in display_df.columns:
-        display_df['Open Interest'] = display_df['Open Interest'].astype(int)
+    if 'OI' in display_df.columns:
+        display_df['OI'] = display_df['OI'].astype(int)
     if 'DTE' in display_df.columns:
         display_df['DTE'] = display_df['DTE'].astype(int)
     
