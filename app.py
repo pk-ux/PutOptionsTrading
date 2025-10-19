@@ -48,8 +48,9 @@ def update_config():
     st.session_state.config['options_strategy']['min_volume'] = st.session_state.min_volume
     st.session_state.config['options_strategy']['min_open_interest'] = st.session_state.min_oi
     st.session_state.config['screening_criteria']['min_annualized_return'] = st.session_state.min_return
-    st.session_state.config['screening_criteria']['min_delta'] = st.session_state.min_delta
-    st.session_state.config['screening_criteria']['max_delta'] = st.session_state.max_delta
+    # Convert delta values to negative for put options
+    st.session_state.config['screening_criteria']['min_delta'] = -abs(st.session_state.min_delta)
+    st.session_state.config['screening_criteria']['max_delta'] = -abs(st.session_state.max_delta)
 
 
 def save_settings():
