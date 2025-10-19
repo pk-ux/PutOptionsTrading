@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 class PublicAPIClient:
-    def __init__(self):
+    def __init__(self, config=None):
         self.secret = os.getenv('PUBLIC_ACCESS_TOKEN')  # This is actually the secret
         self.account_id = os.getenv('PUBLIC_ACCOUNT_ID')
         self.base_url = 'https://api.public.com/userapigateway'
@@ -12,11 +12,22 @@ class PublicAPIClient:
         self.access_token = None
         self.token_expires_at = None
         
+        # Set rate limit from config or use default (50ms)
+        if config and 'api_rate_limits' in config:
+            self.rate_limit_delay = config['api_rate_limits'].get('public_api_delay_ms', 50) / 1000.0
+        else:
+            self.rate_limit_delay = 0.05  # Default 50ms
+        
         if not self.secret or not self.account_id:
             raise ValueError("PUBLIC_ACCESS_TOKEN (secret) and PUBLIC_ACCOUNT_ID must be set in environment variables")
         
         # Generate initial access token
         self._generate_access_token()
+    
+    def set_rate_limit(self, delay_ms):
+        """Update the rate limit delay in milliseconds"""
+        self.rate_limit_delay = delay_ms / 1000.0
+        print(f"Public.com API rate limit updated to {delay_ms}ms")
     
     def _generate_access_token(self):
         """Generate a new JWT access token using the secret"""
@@ -262,8 +273,8 @@ class PublicAPIClient:
             # Add minimal delay between calls to respect rate limits
             if hasattr(self, '_last_greeks_call'):
                 time_since_last = time.time() - self._last_greeks_call
-                if time_since_last < 0.05:  # 50ms minimum between calls (much faster)
-                    time.sleep(0.05 - time_since_last)
+                if time_since_last < self.rate_limit_delay:
+                    time.sleep(self.rate_limit_delay - time_since_last)
             
             url = f"{self.base_url}/option-details/{self.account_id}/{option_symbol}/greeks"
             

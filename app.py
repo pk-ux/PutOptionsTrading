@@ -10,6 +10,8 @@ from options_screener import (
     load_config, get_options_chain, calculate_metrics,
     screen_options, format_output, save_config_file, get_stock_price
 )
+from public_api_client import public_client
+from alpaca_mcp_client import alpaca_mcp_client
 import os
 
 # Page configuration
@@ -22,6 +24,17 @@ st.set_page_config(
 # Initialize session state
 if 'config' not in st.session_state:
     st.session_state.config = load_config()
+    
+    # Apply API rate limits from config
+    if 'api_rate_limits' in st.session_state.config:
+        if public_client:
+            public_delay = st.session_state.config['api_rate_limits'].get('public_api_delay_ms', 50)
+            public_client.set_rate_limit(public_delay)
+        
+        if alpaca_mcp_client:
+            alpaca_delay = st.session_state.config['api_rate_limits'].get('alpaca_api_delay_ms', 100)
+            if hasattr(alpaca_mcp_client, 'set_rate_limit'):
+                alpaca_mcp_client.set_rate_limit(alpaca_delay)
 
 if 'results' not in st.session_state:
     st.session_state.results = {}
@@ -51,6 +64,22 @@ def update_config():
     # Delta values are already negative from the input
     st.session_state.config['screening_criteria']['min_delta'] = st.session_state.min_delta
     st.session_state.config['screening_criteria']['max_delta'] = st.session_state.max_delta
+    
+    # Update API rate limits
+    if 'api_rate_limits' not in st.session_state.config:
+        st.session_state.config['api_rate_limits'] = {}
+    
+    if 'public_delay' in st.session_state:
+        st.session_state.config['api_rate_limits']['public_api_delay_ms'] = st.session_state.public_delay
+        # Apply to client immediately
+        if public_client:
+            public_client.set_rate_limit(st.session_state.public_delay)
+    
+    if 'alpaca_delay' in st.session_state:
+        st.session_state.config['api_rate_limits']['alpaca_api_delay_ms'] = st.session_state.alpaca_delay
+        # Apply to client immediately
+        if alpaca_mcp_client and hasattr(alpaca_mcp_client, 'set_rate_limit'):
+            alpaca_mcp_client.set_rate_limit(st.session_state.alpaca_delay)
 
 
 def save_settings():
@@ -451,6 +480,37 @@ with config_cols[1].container(border=True):
             st.error("❌ Public.com Keys Missing")
     else:
         st.success("✅ Yahoo Finance Connected")
+    
+    # API Rate Limits
+    st.markdown("---")
+    st.caption("⏱️ API Rate Limits")
+    
+    # Ensure api_rate_limits exists in config
+    if 'api_rate_limits' not in st.session_state.config:
+        st.session_state.config['api_rate_limits'] = {
+            'public_api_delay_ms': 50,
+            'alpaca_api_delay_ms': 100
+        }
+    
+    public_delay = st.number_input(
+        "Public.com delay (ms):",
+        min_value=10,
+        max_value=1000,
+        value=st.session_state.config['api_rate_limits'].get('public_api_delay_ms', 50),
+        step=10,
+        help="Delay between Public.com API calls",
+        key='public_delay'
+    )
+    
+    alpaca_delay = st.number_input(
+        "Alpaca delay (ms):",
+        min_value=10,
+        max_value=1000,
+        value=st.session_state.config['api_rate_limits'].get('alpaca_api_delay_ms', 100),
+        step=10,
+        help="Delay between Alpaca API calls",
+        key='alpaca_delay'
+    )
 
 # Options Strategy Settings  
 with config_cols[2].container(border=True):
