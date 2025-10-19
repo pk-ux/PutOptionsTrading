@@ -48,9 +48,9 @@ def update_config():
     st.session_state.config['options_strategy']['min_volume'] = st.session_state.min_volume
     st.session_state.config['options_strategy']['min_open_interest'] = st.session_state.min_oi
     st.session_state.config['screening_criteria']['min_annualized_return'] = st.session_state.min_return
-    # Convert delta values to negative for put options
-    st.session_state.config['screening_criteria']['min_delta'] = -abs(st.session_state.min_delta)
-    st.session_state.config['screening_criteria']['max_delta'] = -abs(st.session_state.max_delta)
+    # Delta values are already negative from the input
+    st.session_state.config['screening_criteria']['min_delta'] = st.session_state.min_delta
+    st.session_state.config['screening_criteria']['max_delta'] = st.session_state.max_delta
 
 
 def save_settings():
@@ -501,19 +501,19 @@ with config_cols[3].container(border=True):
     )
     
     min_delta = st.number_input(
-        "Min Delta (absolute):",
-        min_value=0.0,
-        max_value=1.0,
-        value=abs(float(st.session_state.config['screening_criteria']['min_delta'])),
+        "Min Delta:",
+        min_value=-1.0,
+        max_value=0.0,
+        value=float(st.session_state.config['screening_criteria']['min_delta']),
         key='min_delta',
         step=0.01
     )
     
     max_delta = st.number_input(
-        "Max Delta (absolute):",
-        min_value=0.0,
-        max_value=1.0,
-        value=abs(float(st.session_state.config['screening_criteria']['max_delta'])),
+        "Max Delta:",
+        min_value=-1.0,
+        max_value=0.0,
+        value=float(st.session_state.config['screening_criteria']['max_delta']),
         key='max_delta',
         step=0.01
     )

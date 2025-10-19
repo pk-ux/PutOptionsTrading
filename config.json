@@ -35,8 +35,8 @@
     },
     "screening_criteria": {
         "min_annualized_return": 30.0,
-        "min_delta": 0.3,
-        "max_delta": 0.05
+        "min_delta": -0.3,
+        "max_delta": -0.05
     },
     "output": {
         "sort_by": [
