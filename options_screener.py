@@ -452,12 +452,11 @@ def calculate_metrics(options_chain, current_price):
         lambda x: max((datetime.strptime(x, '%Y-%m-%d').date() - today).days + 1, 1)
     )
     
-    # Calculate annualized return based on option premium
-    BUSINESS_DAYS_PER_YEAR = 252  # Approximately 252 business days per year
+    # Calculate annualized return based on option premium using calendar time
+    CALENDAR_DAYS_PER_YEAR = 365
     
-    # Use calendar days for annualized return calculation
     options_chain['annualized_return'] = (
-        options_chain['lastPrice'] / options_chain['strike'] * (BUSINESS_DAYS_PER_YEAR / options_chain['calendar_days']) * 100
+        options_chain['lastPrice'] / options_chain['strike'] * (CALENDAR_DAYS_PER_YEAR / options_chain['calendar_days']) * 100
     )
     
     return options_chain
