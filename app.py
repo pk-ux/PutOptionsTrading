@@ -494,9 +494,9 @@ with config_cols[1].container(border=True):
     
     public_delay = st.number_input(
         "Public.com delay (ms):",
-        min_value=10,
+        min_value=1,
         max_value=1000,
-        value=st.session_state.config['api_rate_limits'].get('public_api_delay_ms', 50),
+        value=max(10, st.session_state.config['api_rate_limits'].get('public_api_delay_ms', 50)),
         step=10,
         help="Delay between Public.com API calls",
         key='public_delay'
@@ -504,9 +504,9 @@ with config_cols[1].container(border=True):
     
     alpaca_delay = st.number_input(
         "Alpaca delay (ms):",
-        min_value=10,
+        min_value=1,
         max_value=1000,
-        value=st.session_state.config['api_rate_limits'].get('alpaca_api_delay_ms', 100),
+        value=max(10, st.session_state.config['api_rate_limits'].get('alpaca_api_delay_ms', 100)),
         step=10,
         help="Delay between Alpaca API calls",
         key='alpaca_delay'

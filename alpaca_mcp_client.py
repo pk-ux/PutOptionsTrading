@@ -384,4 +384,9 @@ class AlpacaMCPClient:
         return sigma
 
 # Global instance for easy import
-alpaca_mcp_client = AlpacaMCPClient()
+try:
+    alpaca_mcp_client = AlpacaMCPClient()
+    print("Alpaca MCP client initialized successfully")
+except Exception as e:
+    print(f"Failed to initialize Alpaca MCP client: {str(e)}")
+    alpaca_mcp_client = None
