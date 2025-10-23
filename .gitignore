@@ -1,1 +1,23 @@
+# Environment
 .env
+
+# Python cache and compiled files
+__pycache__/
+*.py[co]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+*.egg
+
+# Build artifacts
+build/
+dist/
+*.log
+
+# Streamlit 
+.streamlit/
+
+# OS
+.DS_Store
