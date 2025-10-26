@@ -28,8 +28,8 @@
         ]
     },
     "api_rate_limits": {
-        "public_api_delay_ms": 10,
-        "alpaca_api_delay_ms": 10
+        "public_api_delay_ms": 5,
+        "alpaca_api_delay_ms": 5
     },
     "options_strategy": {
         "max_dte": 30,
