@@ -11,6 +11,7 @@ scipy>=1.10.0
 # Financial data APIs
 yfinance>=0.2.28
 alpaca-py>=0.13.0
+massive>=2.0.0
 requests>=2.31.0
 
 # Environment variables

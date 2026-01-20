@@ -1,46 +1,47 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import json
 import time
-from datetime import datetime
-import asyncio
-import concurrent.futures
 from options_screener import (
     load_config, get_options_chain, calculate_metrics,
     screen_options, format_output, save_config_file, get_stock_price
 )
-from public_api_client import public_client
-from alpaca_mcp_client import alpaca_mcp_client
+from massive_api_client import massive_client
 import os
 
 # Page configuration
 st.set_page_config(
     page_title="Put Options Screener",
-    page_icon=":chart_with_downwards_trend:",
-    layout="wide"
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# Reduce top padding and compact sidebar
+st.markdown("""
+<style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    /* Compact sidebar */
+    section[data-testid="stSidebar"] .block-container {
+        padding-top: 1rem;
+    }
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div {
+        gap: 0.3rem;
+    }
+    section[data-testid="stSidebar"] hr {
+        margin: 0.5rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Initialize session state
 if 'config' not in st.session_state:
     st.session_state.config = load_config()
-    
-    # Apply API rate limits from config
-    if 'api_rate_limits' in st.session_state.config:
-        if public_client:
-            public_delay = st.session_state.config['api_rate_limits'].get('public_api_delay_ms', 50)
-            public_client.set_rate_limit(public_delay)
-        
-        if alpaca_mcp_client:
-            alpaca_delay = st.session_state.config['api_rate_limits'].get('alpaca_api_delay_ms', 100)
-            if hasattr(alpaca_mcp_client, 'set_rate_limit'):
-                alpaca_mcp_client.set_rate_limit(alpaca_delay)
 
 if 'results' not in st.session_state:
     st.session_state.results = {}
-
-if 'current_symbol' not in st.session_state:
-    st.session_state.current_symbol = ""
 
 if 'processing' not in st.session_state:
     st.session_state.processing = False
@@ -48,553 +49,327 @@ if 'processing' not in st.session_state:
 if 'stop_processing' not in st.session_state:
     st.session_state.stop_processing = False
 
-if 'progress_messages' not in st.session_state:
-    st.session_state.progress_messages = []
-
 if 'api_source' not in st.session_state:
-    st.session_state.api_source = "yahoo"
+    st.session_state.api_source = "massive"
 
-def update_config():
-    """Update configuration from form inputs"""
-    st.session_state.config['options_strategy']['max_dte'] = st.session_state.max_dte
-    st.session_state.config['options_strategy']['min_dte'] = st.session_state.min_dte
-    st.session_state.config['options_strategy']['min_volume'] = st.session_state.min_volume
-    st.session_state.config['options_strategy']['min_open_interest'] = st.session_state.min_oi
-    st.session_state.config['screening_criteria']['min_annualized_return'] = st.session_state.min_return
-    # Delta values are already negative from the input
-    st.session_state.config['screening_criteria']['min_delta'] = st.session_state.min_delta
-    st.session_state.config['screening_criteria']['max_delta'] = st.session_state.max_delta
+# ============================================================================
+# SIDEBAR - Configuration (Compact)
+# ============================================================================
+with st.sidebar:
+    # Data Source (inline with status)
+    st.caption("DATA SOURCE")
+    api_options = ["massive", "yahoo"]
+    if st.session_state.api_source not in api_options:
+        st.session_state.api_source = "massive"
     
-    # Update API rate limits
-    if 'api_rate_limits' not in st.session_state.config:
-        st.session_state.config['api_rate_limits'] = {}
-    
-    if 'public_delay' in st.session_state:
-        st.session_state.config['api_rate_limits']['public_api_delay_ms'] = st.session_state.public_delay
-        # Apply to client immediately
-        if public_client:
-            public_client.set_rate_limit(st.session_state.public_delay)
-    
-    if 'alpaca_delay' in st.session_state:
-        st.session_state.config['api_rate_limits']['alpaca_api_delay_ms'] = st.session_state.alpaca_delay
-        # Apply to client immediately
-        if alpaca_mcp_client and hasattr(alpaca_mcp_client, 'set_rate_limit'):
-            alpaca_mcp_client.set_rate_limit(st.session_state.alpaca_delay)
-
-
-def save_settings():
-    """Save current settings to config file"""
-    update_config()
-    
-    # Parse and update symbols from text input
-    if 'symbols_text_input' in st.session_state:
-        symbols_text = st.session_state.symbols_text_input.strip()
-        if symbols_text:
-            # Parse comma-separated symbols and clean them
-            symbols = [symbol.strip().upper() for symbol in symbols_text.split(',') if symbol.strip()]
-            st.session_state.config['data']['symbols'] = symbols
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        api_source = st.radio(
+            "Source",
+            options=api_options,
+            format_func=lambda x: "Massive.com" if x == "massive" else "Yahoo Finance",
+            index=api_options.index(st.session_state.api_source),
+            label_visibility="collapsed",
+            horizontal=True
+        )
+        st.session_state.api_source = api_source
+    with col2:
+        if api_source == "massive" and os.getenv('MASSIVE_API_KEY'):
+            st.markdown("✓")
+        elif api_source == "yahoo":
+            st.markdown("✓")
         else:
-            st.session_state.config['data']['symbols'] = []
+            st.markdown("✗")
     
-    save_config_file(st.session_state.config)
-    st.success("Settings and stock symbols saved successfully!")
+    # Expiration & Liquidity in one row each
+    st.caption("EXPIRATION (DTE)")
+    col1, col2 = st.columns(2)
+    with col1:
+        min_dte = st.number_input("Min", min_value=0, max_value=364,
+            value=st.session_state.config['options_strategy'].get('min_dte', 0), key='min_dte')
+    with col2:
+        max_dte = st.number_input("Max", min_value=1, max_value=365,
+            value=st.session_state.config['options_strategy']['max_dte'], key='max_dte')
+    
+    st.caption("LIQUIDITY")
+    col1, col2 = st.columns(2)
+    with col1:
+        min_volume = st.number_input("Min Vol", min_value=0, max_value=10000,
+            value=st.session_state.config['options_strategy']['min_volume'], key='min_volume')
+    with col2:
+        min_oi = st.number_input("Min OI", min_value=0, max_value=10000,
+            value=st.session_state.config['options_strategy']['min_open_interest'], key='min_oi')
+    
+    # Screening
+    st.caption("SCREENING")
+    col1, col2 = st.columns(2)
+    with col1:
+        min_return = st.number_input("Min Ret%", min_value=0.0, max_value=500.0,
+            value=float(st.session_state.config['screening_criteria']['min_annualized_return']), key='min_return')
+    with col2:
+        max_assignment_prob = st.number_input("Max Prob%", min_value=5, max_value=50,
+            value=int(st.session_state.config['screening_criteria'].get('max_assignment_probability', 20)),
+            key='max_assignment_prob', help="Delta: 0 to -X%")
+    
+    # Watchlist
+    st.caption("WATCHLIST")
+    current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
+    symbols_input = st.text_area("Symbols", value=current_symbols_text, height=60,
+        key='symbols_text_input', label_visibility="collapsed", placeholder="AAPL, TSLA...")
+    
+    if symbols_input:
+        new_symbols = [s.strip().upper() for s in symbols_input.split(',') if s.strip()]
+        if new_symbols != st.session_state.config['data']['symbols']:
+            st.session_state.config['data']['symbols'] = new_symbols
+    
+    # Save button
+    if st.button("Save", width="stretch"):
+        st.session_state.config['options_strategy']['max_dte'] = st.session_state.max_dte
+        st.session_state.config['options_strategy']['min_dte'] = st.session_state.min_dte
+        st.session_state.config['options_strategy']['min_volume'] = st.session_state.min_volume
+        st.session_state.config['options_strategy']['min_open_interest'] = st.session_state.min_oi
+        st.session_state.config['screening_criteria']['min_annualized_return'] = st.session_state.min_return
+        st.session_state.config['screening_criteria']['max_assignment_probability'] = st.session_state.max_assignment_prob
+        save_config_file(st.session_state.config)
+        st.success("Saved!")
 
-def process_single_symbol(symbol, config, api_source="alpaca"):
+# ============================================================================
+# MAIN AREA
+# ============================================================================
+
+# Header
+st.title("Put Options Screener")
+st.caption("Discover profitable put option opportunities with real-time market data")
+
+# Action Row
+col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+
+with col1:
+    selected_symbol = st.selectbox(
+        "Select Stock",
+        options=st.session_state.config['data']['symbols'],
+        key='symbol_selector',
+        label_visibility="collapsed"
+    )
+
+with col2:
+    screen_single = st.button(
+        "Screen Stock",
+        disabled=st.session_state.processing,
+        width="stretch",
+        type="primary"
+    )
+
+with col3:
+    screen_all = st.button(
+        "Screen All",
+        disabled=st.session_state.processing,
+        width="stretch"
+    )
+
+with col4:
+    if st.session_state.processing:
+        if st.button("Stop", width="stretch"):
+            st.session_state.stop_processing = True
+            st.session_state.processing = False
+            st.rerun()
+
+# ============================================================================
+# Processing Functions
+# ============================================================================
+
+def process_single_symbol(symbol, config, api_source="massive"):
     """Process a single symbol and return results"""
     try:
-        # Get stock price using selected API
         current_price = get_stock_price(symbol, api_source)
-        
-        # Get options chain
         options = get_options_chain(symbol, config, api_source)
         
         if options.empty:
-            return None, f"No options data found for {symbol}"
+            return None, f"No options data for {symbol}"
         
-        # Calculate metrics
         options = calculate_metrics(options, current_price)
-        
-        # Screen options
         filtered = screen_options(options, config)
-        
-        # Format output
         formatted = format_output(filtered, current_price)
         
         if not formatted.empty:
-            return formatted, f"{symbol} processing complete, found {len(formatted)} qualifying options"
+            return formatted, f"Found {len(formatted)} options for {symbol}"
         else:
-            return None, f"No qualifying options found for {symbol}"
+            return None, f"No qualifying options for {symbol}"
             
     except Exception as e:
-        return None, f"Error processing {symbol}: {str(e)}"
+        return None, f"Error: {symbol} - {str(e)}"
 
-def stop_processing():
-    """Stop the current processing"""
-    st.session_state.stop_processing = True
-    st.session_state.processing = False
-
-def screen_symbols(symbols):
-    """Screen multiple symbols with progress tracking"""
-    # Initialize processing state
+def run_screening(symbols):
+    """Run screening for given symbols"""
     st.session_state.processing = True
     st.session_state.stop_processing = False
     st.session_state.results = {}
-    st.session_state.progress_messages = []
-    st.session_state.symbols_to_screen = symbols
     
-    # Trigger UI refresh to start progress tracking
-    st.rerun()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-def run_screening_process():
-    """Background process for screening symbols with real-time results updates"""
-    if not hasattr(st.session_state, 'symbols_to_screen'):
-        return
+    total = len(symbols)
+    for i, symbol in enumerate(symbols):
+        if st.session_state.stop_processing:
+            status_text.warning("Screening stopped")
+            break
         
-    symbols = st.session_state.symbols_to_screen
-    total_symbols = len(symbols)
-    
-    # Initialize results if not already done
-    if not hasattr(st.session_state, 'results'):
-        st.session_state.results = {}
-    
-    # Update progress placeholders if they exist
-    if hasattr(st.session_state, 'progress_placeholder') and hasattr(st.session_state, 'status_placeholder'):
-        # Process symbols one by one with progress updates
-        for i, symbol in enumerate(symbols):
-            # Check if user wants to stop
-            if st.session_state.get('stop_processing', False):
-                st.session_state.status_placeholder.warning("🛑 Processing stopped by user")
-                break
-                
-            # Update progress
-            progress = i / total_symbols
-            status_text = f"Processing {symbol}... ({i+1}/{total_symbols})"
-            
-            st.session_state.progress_placeholder.progress(progress)
-            st.session_state.status_placeholder.info(f"🔄 {status_text}")
-            
-            try:
-                result, message = process_single_symbol(symbol, st.session_state.config, st.session_state.api_source)
-                if result is not None and not result.empty:
-                    # Update results immediately for real-time display
-                    st.session_state.results[symbol] = result
-                    
-                    # Create/update summary for multiple symbols
-                    if len(symbols) > 1:
-                        summary_rows = []
-                        for processed_symbol in st.session_state.results.keys():
-                            if processed_symbol != 'Summary' and processed_symbol in st.session_state.results:
-                                summary_rows.append(st.session_state.results[processed_symbol].iloc[0])
-                        
-                        if summary_rows:
-                            summary_df = pd.DataFrame(summary_rows)
-                            st.session_state.results['Summary'] = summary_df
-                    
-                    # DON'T call st.rerun() here - it restarts the entire process!
-                    # Results will show after all processing is complete
-                    
-                st.session_state.progress_messages.append(message)
-            except Exception as e:
-                st.session_state.progress_messages.append(f"Error processing {symbol}: {str(e)}")
-            
-            # Update final progress for this symbol
-            progress = (i + 1) / total_symbols
-            st.session_state.progress_placeholder.progress(progress)
+        status_text.info(f"Processing {symbol}... ({i+1}/{total})")
+        progress_bar.progress((i + 1) / total)
         
-        # Clear progress placeholders
-        st.session_state.progress_placeholder.empty()
-        st.session_state.status_placeholder.empty()
+        result, message = process_single_symbol(
+            symbol, 
+            st.session_state.config, 
+            st.session_state.api_source
+        )
+        
+        if result is not None and not result.empty:
+            st.session_state.results[symbol] = result
     
-    # Complete processing
+    # Create summary if multiple results
+    if len(st.session_state.results) > 1:
+        summary_rows = []
+        for sym in st.session_state.results.keys():
+            if sym != 'Summary':
+                summary_rows.append(st.session_state.results[sym].iloc[0])
+        if summary_rows:
+            st.session_state.results['Summary'] = pd.DataFrame(summary_rows)
+    
+    progress_bar.empty()
+    status_text.empty()
     st.session_state.processing = False
-    
-    # Debug: Log what we found
-    num_results = len([k for k in st.session_state.results.keys() if k != 'Summary'])
-    print(f"DEBUG: Screening complete. Found results for {num_results} symbols")
-    print(f"DEBUG: Results keys: {list(st.session_state.results.keys())}")
-    if st.session_state.results:
-        for symbol, data in st.session_state.results.items():
-            print(f"DEBUG: {symbol} has {len(data) if hasattr(data, '__len__') else 'N/A'} rows")
-    
-    # Clean up
-    del st.session_state.symbols_to_screen
-    if hasattr(st.session_state, 'progress_placeholder'):
-        del st.session_state.progress_placeholder
-    if hasattr(st.session_state, 'status_placeholder'):
-        del st.session_state.status_placeholder
-    
-    # Force UI refresh to re-enable buttons
     st.rerun()
 
-def display_results_table(df, symbol_name):
-    """Display results table with color coding"""
+# Handle button clicks
+if screen_single and selected_symbol:
+    run_screening([selected_symbol])
+
+if screen_all and st.session_state.config['data']['symbols']:
+    run_screening(st.session_state.config['data']['symbols'])
+
+# ============================================================================
+# Results Display
+# ============================================================================
+
+def display_results_table(df, symbol_name, api_source=None):
+    """Display results table"""
     if df.empty:
-        st.info(f"No results available for {symbol_name}")
+        st.info(f"No results for {symbol_name}")
         return
     
-    st.subheader(f"{symbol_name} Screening Results")
+    display_df = df.copy().reset_index(drop=True)
     
-    # Prepare display dataframe with proper column names
-    display_df = df.copy().reset_index(drop=True)  # Reset index to ensure uniqueness
-    
+    # Column mapping
     column_mapping = {
         'symbol': 'Symbol',
-        'current_price': 'Current Price',
-        'strike': 'Strike Price',
-        'lastPrice': 'Option Price',
-        'volume': 'Volume',
+        'current_price': 'Price',
+        'strike': 'Strike',
+        'lastPrice': 'Premium',
+        'volume': 'Vol',
         'open_interest': 'OI',
-        'impliedVolatility': 'IV (%)',
+        'impliedVolatility': 'IV%',
         'delta': 'Delta',
-        'gamma': 'Gamma',
-        'theta': 'Theta',
-        'vega': 'Vega',
-        'rho': 'Rho',
-        'annualized_return': 'Annualized Return (%)',
-        'expiry': 'Expiration Date',
+        'annualized_return': 'Return%',
+        'expiry': 'Expiry',
         'calendar_days': 'DTE'
     }
     
-    # Rename columns that exist
+    if api_source == 'massive':
+        column_mapping['theta'] = 'Decay'
+    
+    # Select and rename columns
     display_cols = [col for col in column_mapping.keys() if col in display_df.columns]
     display_df = display_df[display_cols]
     display_df = display_df.rename(columns=column_mapping)
     
-    # Format numerical columns with explicit decimal places
-    if 'Current Price' in display_df.columns:
-        display_df['Current Price'] = display_df['Current Price'].apply(lambda x: f"{x:.2f}")
-    if 'Strike Price' in display_df.columns:
-        display_df['Strike Price'] = display_df['Strike Price'].apply(lambda x: f"{x:.2f}")
-    if 'Option Price' in display_df.columns:
-        display_df['Option Price'] = display_df['Option Price'].apply(lambda x: f"{x:.2f}")
+    # Format columns
+    if 'Price' in display_df.columns:
+        display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}")
+    if 'Strike' in display_df.columns:
+        display_df['Strike'] = display_df['Strike'].apply(lambda x: f"${x:.0f}")
+    if 'Premium' in display_df.columns:
+        display_df['Premium'] = display_df['Premium'].apply(lambda x: f"${x:.2f}")
     if 'Delta' in display_df.columns:
         display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.3f}")
-    if 'Gamma' in display_df.columns:
-        display_df['Gamma'] = display_df['Gamma'].apply(lambda x: f"{x:.4f}")
-    if 'Theta' in display_df.columns:
-        display_df['Theta'] = display_df['Theta'].apply(lambda x: f"{x:.4f}")
-    if 'Vega' in display_df.columns:
-        display_df['Vega'] = display_df['Vega'].apply(lambda x: f"{x:.4f}")
-    if 'Rho' in display_df.columns:
-        display_df['Rho'] = display_df['Rho'].apply(lambda x: f"{x:.4f}")
-    if 'Annualized Return (%)' in display_df.columns:
-        display_df['Annualized Return (%)'] = display_df['Annualized Return (%)'].apply(lambda x: f"{x:.2f}")
-    if 'IV (%)' in display_df.columns:
-        display_df['IV (%)'] = display_df['IV (%)'].apply(lambda x: f"{x:.2f}")
-    if 'Volume' in display_df.columns:
-        display_df['Volume'] = display_df['Volume'].astype(int)
+    if 'Decay' in display_df.columns:
+        display_df['Decay'] = display_df['Decay'].apply(lambda x: f"{x:.4f}")
+    if 'Return%' in display_df.columns:
+        display_df['Return%'] = display_df['Return%'].apply(lambda x: f"{x:.1f}%")
+    if 'IV%' in display_df.columns:
+        display_df['IV%'] = display_df['IV%'].apply(lambda x: f"{x:.1f}%")
+    if 'Vol' in display_df.columns:
+        display_df['Vol'] = display_df['Vol'].astype(int)
     if 'OI' in display_df.columns:
         display_df['OI'] = display_df['OI'].astype(int)
     if 'DTE' in display_df.columns:
         display_df['DTE'] = display_df['DTE'].astype(int)
     
-    # Apply color coding using map function for the annualized return column
-    def color_annualized_return(val):
-        """Apply color coding to annualized return values"""
+    # Color coding for returns
+    def highlight_returns(val):
         try:
-            # Convert string back to float for comparison
-            numeric_val = float(val) if isinstance(val, str) else val
-            if numeric_val >= 50:
-                return 'background-color: #4CAF50; color: white; font-weight: bold'  # Green background with white text
-            elif numeric_val >= 30:
-                return 'background-color: #FFC107; color: black; font-weight: bold'  # Amber background with black text
-        except (ValueError, TypeError):
+            num = float(val.replace('%', ''))
+            if num >= 50:
+                return 'background-color: #28a745; color: white; font-weight: bold'
+            elif num >= 30:
+                return 'background-color: #ffc107; color: black; font-weight: bold'
+        except:
             pass
         return ''
     
-    # Apply styling only if Annualized Return column exists
-    if 'Annualized Return (%)' in display_df.columns:
-        styled_df = display_df.style.map(color_annualized_return, subset=['Annualized Return (%)'])
+    if 'Return%' in display_df.columns:
+        styled_df = display_df.style.map(highlight_returns, subset=['Return%'])
     else:
         styled_df = display_df.style
     
-    st.dataframe(styled_df, width="stretch")
+    # Calculate height based on rows (35px per row + 38px header)
+    table_height = len(display_df) * 35 + 38
+    st.dataframe(styled_df, width="stretch", hide_index=True, height=table_height)
 
-# Main application layout with Stockpeers-inspired design
-st.markdown("# 📉 Put Options Screener")
-st.markdown("*Discover profitable put option opportunities with real-time market data.*")
-
-st.markdown("")  # Add some space
-
-# Actions Card - Top Left
-actions_card = st.container(border=True)
-with actions_card:
-    st.subheader("▶️ Actions")
+# Show results
+if st.session_state.results:
+    st.divider()
     
-    # Stock selection dropdown in actions card
-    selected_symbol = st.selectbox(
-        "Choose stock to screen:",
-        options=st.session_state.config['data']['symbols'],
-        key='symbol_selector',
-        placeholder="Select a stock symbol"
-    )
-    st.session_state.current_symbol = selected_symbol
+    # Results header with dropdown
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.subheader("Results")
     
-    # Create columns for action buttons  
-    action_cols = st.columns(3)
-    
-    with action_cols[0]:
-        if st.button("Screen Selected Stock", disabled=st.session_state.processing, width="stretch"):
-            if selected_symbol:
-                st.session_state.symbols_to_screen = [selected_symbol]
-                screen_symbols([selected_symbol])
-            else:
-                st.warning("Please select a stock symbol first.")
-    
-    with action_cols[1]:
-        if st.button("Screen All Stocks", disabled=st.session_state.processing, width="stretch"):
-            if st.session_state.config['data']['symbols']:
-                st.session_state.symbols_to_screen = st.session_state.config['data']['symbols']
-                screen_symbols(st.session_state.config['data']['symbols'])
-            else:
-                st.warning("No stock symbols available.")
-    
-    with action_cols[2]:
-        # Stop button when processing
-        if st.session_state.processing:
-            if st.button("🛑 Stop Screening", type="secondary", width="stretch", key="stop_btn_inline"):
-                stop_processing()
-                st.rerun()
-        else:
-            st.markdown("")  # Empty space when not processing
-
-st.markdown("")  # Add space
-
-# Results display - Full width (moved to below Actions)
-if not st.session_state.processing and hasattr(st.session_state, 'results') and st.session_state.results:
-    # Full width results container
-    results_container = st.container(border=True)
-    with results_container:
-        st.markdown("## 📊 Screening Results")
-        
-        # Create dropdown options - Summary + individual tickers
+    # Build dropdown options
         dropdown_options = []
         if 'Summary' in st.session_state.results:
             dropdown_options.append("Summary")
-        
-        # Add individual ticker options
         for symbol in st.session_state.results.keys():
             if symbol != 'Summary':
                 dropdown_options.append(symbol)
         
-        # Default to Summary if available, otherwise first ticker
-        default_selection = "Summary" if "Summary" in dropdown_options else dropdown_options[0]
+    if dropdown_options:
+        with col2:
+            selected_view = st.selectbox(
+                "View",
+                options=dropdown_options,
+                key='results_view_selector',
+                label_visibility="collapsed"
+            )
         
-        # Initialize selected view in session state if not exists
-        if 'selected_results_view' not in st.session_state:
-            st.session_state.selected_results_view = default_selection
-        
-        # Dropdown to select which results to view
-        selected_view = st.selectbox(
-            "View results for:",
-            options=dropdown_options,
-            index=dropdown_options.index(st.session_state.selected_results_view) if st.session_state.selected_results_view in dropdown_options else 0,
-            key='results_view_selector'
-        )
-        st.session_state.selected_results_view = selected_view
-        
-        # Display the selected table
         if selected_view in st.session_state.results:
-            display_results_table(st.session_state.results[selected_view], selected_view)
+            display_results_table(
+                st.session_state.results[selected_view],
+                selected_view,
+                st.session_state.api_source
+            )
+            
+            # Show news for individual tickers (not Summary)
+            if selected_view != 'Summary' and st.session_state.api_source == 'massive' and massive_client:
+                st.caption("Latest News (Last 7 Days)")
+                news_items = massive_client.get_ticker_news(selected_view, limit=10, max_age_days=7)
+                if news_items:
+                    for item in news_items:
+                        date_str = f"**{item['date_display']}** - " if item.get('date_display') else ""
+                        st.markdown(f"• {date_str}[{item['title']}]({item['url']})")
+                else:
+                    st.markdown("*No recent news in the last 7 days*")
 
-elif not hasattr(st.session_state, 'results') or not st.session_state.results:
-    # Full width getting started container
-    getting_started_container = st.container(border=True)
-    with getting_started_container:
-        st.markdown("## 💡 Getting Started")
-        st.markdown("""
-        1. **Choose your data source** in the configuration section below
-        2. **Select a stock symbol** in the Actions section above
-        3. **Click "Screen Selected Stock"** or "Screen All Stocks"  
-        4. **Review results** and adjust configuration as needed
-        """)
-
-# Progress tracking
-if hasattr(st.session_state, 'processing') and st.session_state.processing:
-    # Create progress placeholders
-    progress_placeholder = st.empty()
-    status_placeholder = st.empty()
-    
-    # Show immediate progress feedback
-    progress_placeholder.progress(0.0)
-    status_placeholder.info("🔄 Starting screening...")
-    
-    # Store placeholders for updates
-    st.session_state.progress_placeholder = progress_placeholder
-    st.session_state.status_placeholder = status_placeholder
-    
-    # Run the actual screening process
-    # Note: run_screening_process() will set processing=False and call st.rerun() when done
-    run_screening_process()
-
-# Bottom configuration section
-st.markdown("")  # Add space
-
-st.markdown("## 🔧 Screening Configuration")
-
-# Configuration in clean containers
-config_cols = st.columns(4)
-
-# Stock Symbols Configuration
-with config_cols[0].container(border=True):
-    st.subheader("📋 Stock Symbols")
-    current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
-    symbols_input = st.text_area(
-        "Enter symbols (comma-separated):",
-        value=current_symbols_text,
-        help="e.g., AAPL, TSLA, NVDA, SPY",
-        key='symbols_text_input',
-        height=100
-    )
-    
-    # Update symbols from text input
-    if symbols_input:
-        new_symbols = [s.strip().upper() for s in symbols_input.split(',') if s.strip()]
-        if new_symbols != st.session_state.config['data']['symbols']:
-            st.session_state.config['data']['symbols'] = new_symbols
-
-# Data Source Configuration (moved below Stock Symbols Config)
-with config_cols[1].container(border=True):
-    st.subheader("🔗 Data Source")
-    
-    # API Source selection
-    api_source = st.radio(
-        "Choose your data source:",
-        options=["public", "alpaca", "yahoo"],
-        format_func=lambda x: "Public.com (Real-time)" if x == "public" else ("Alpaca (Real-time)" if x == "alpaca" else "Yahoo Finance (Free)"),
-        index=2 if st.session_state.api_source == "yahoo" else (0 if st.session_state.api_source == "public" else 1),
-        help="Choose your data source for stock prices and options data"
-    )
-    st.session_state.api_source = api_source
-    
-    # Show connection status
-    if api_source == "alpaca":
-        if os.getenv('ALPACA_API_KEY'):
-            st.success("✅ Alpaca Connected")
-        else:
-            st.error("❌ Alpaca Keys Missing")
-    elif api_source == "public":
-        if os.getenv('PUBLIC_ACCESS_TOKEN') and os.getenv('PUBLIC_ACCOUNT_ID'):
-            st.success("✅ Public.com Connected")
-        else:
-            st.error("❌ Public.com Keys Missing")
-    else:
-        st.success("✅ Yahoo Finance Connected")
-    
-    # API Rate Limits
-    st.markdown("---")
-    st.caption("⏱️ API Rate Limits")
-    
-    # Ensure api_rate_limits exists in config
-    if 'api_rate_limits' not in st.session_state.config:
-        st.session_state.config['api_rate_limits'] = {
-            'public_api_delay_ms': 50,
-            'alpaca_api_delay_ms': 100
-        }
-    
-    public_delay = st.number_input(
-        "Public.com delay (ms):",
-        min_value=1,
-        max_value=1000,
-        value=max(10, st.session_state.config['api_rate_limits'].get('public_api_delay_ms', 50)),
-        step=10,
-        help="Delay between Public.com API calls",
-        key='public_delay'
-    )
-    
-    alpaca_delay = st.number_input(
-        "Alpaca delay (ms):",
-        min_value=1,
-        max_value=1000,
-        value=max(10, st.session_state.config['api_rate_limits'].get('alpaca_api_delay_ms', 100)),
-        step=10,
-        help="Delay between Alpaca API calls",
-        key='alpaca_delay'
-    )
-
-# Options Strategy Settings  
-with config_cols[2].container(border=True):
-    st.subheader("📅 Strategy Settings")
-    
-    max_dte = st.number_input(
-        "Max Days to Expiration:",
-        min_value=1,
-        max_value=365,
-        value=st.session_state.config['options_strategy']['max_dte'],
-        key='max_dte'
-    )
-    
-    min_dte = st.number_input(
-        "Min Days to Expiration:",
-        min_value=0,
-        max_value=364,
-        value=st.session_state.config['options_strategy'].get('min_dte', 0),
-        key='min_dte'
-    )
-    
-    min_volume = st.number_input(
-        "Minimum Volume:",
-        min_value=0,
-        max_value=10000,
-        value=st.session_state.config['options_strategy']['min_volume'],
-        key='min_volume'
-    )
-    
-    min_oi = st.number_input(
-        "Minimum Open Interest:",
-        min_value=0,
-        max_value=10000,
-        value=st.session_state.config['options_strategy']['min_open_interest'],
-        key='min_oi'
-    )
-
-# Screening Criteria Settings
-with config_cols[3].container(border=True):
-    st.subheader("🔍 Screening Criteria")
-    
-    min_return = st.number_input(
-        "Min Annualized Return (%):",
-        min_value=0.0,
-        max_value=1000.0,
-        value=st.session_state.config['screening_criteria']['min_annualized_return'],
-        key='min_return'
-    )
-    
-    min_delta = st.number_input(
-        "Min Delta:",
-        min_value=-1.0,
-        max_value=0.0,
-        value=float(st.session_state.config['screening_criteria']['min_delta']),
-        key='min_delta',
-        step=0.01
-    )
-    
-    max_delta = st.number_input(
-        "Max Delta:",
-        min_value=-1.0,
-        max_value=0.0,
-        value=float(st.session_state.config['screening_criteria']['max_delta']),
-        key='max_delta',
-        step=0.01
-    )
-    
-    # Save button
-    if st.button("Save Settings", width="stretch"):
-        save_settings()
-
-st.markdown("")  # Add space
-
-# Results section moved above - this space intentionally left empty
-
-# Progress messages
-if st.session_state.progress_messages:
-    with st.expander("Processing Log", expanded=False):
-        for message in st.session_state.progress_messages:
-            if "Error" in message:
-                st.error(message)
-            elif "complete" in message or "found" in message:
-                st.success(message)
-            else:
-                st.info(message)
-
-# Remove old processing indicator - now handled in main section
+elif not st.session_state.processing:
+    # Empty state hint
+    st.divider()
+    st.info("Select a stock and click **Screen Stock** to find put options, or click **Screen All** to analyze your watchlist.")

@@ -1,6 +1,6 @@
 # Put Options Screener
 
-Interactive Streamlit app that scans put option chains for a list of stocks, computes key metrics (delta, annualized return, implied volatility), and highlights candidates that meet your custom filters. Data can come from Alpaca (real-time), Public.com (real-time), or Yahoo Finance (free).
+Interactive Streamlit app that scans put option chains for a list of stocks, computes key metrics (delta, annualized return, implied volatility), and highlights candidates that meet your custom filters. Data can come from Massive.com (professional Greeks), Alpaca (real-time), Public.com (real-time), or Yahoo Finance (free).
 
 ## What this project does
 - Loads a configurable list of tickers and option screening rules from `config.json`.
@@ -11,6 +11,7 @@ Interactive Streamlit app that scans put option chains for a list of stocks, com
 ## Project structure (key files)
 - `app.py` – Streamlit UI, state management, and orchestration.
 - `options_screener.py` – Data fetching, metrics, filtering, and formatting.
+- `massive_api_client.py` – Massive.com API client (professional Greeks from API, no local calculation).
 - `alpaca_mcp_client.py` – Thin wrapper around Alpaca APIs for quotes and option contracts.
 - `public_api_client.py` – Public.com API client (quotes, chains, Greeks).
 - `config.json` – Default symbols and screening parameters you can edit or update via the UI.
@@ -18,7 +19,7 @@ Interactive Streamlit app that scans put option chains for a list of stocks, com
 
 ## Prerequisites
 - Python 3.11+
-- An Alpaca account (for real-time Alpaca data) and/or Public.com credentials if you want those sources. Yahoo Finance works without credentials.
+- Massive.com API key (for professional-grade Greeks), Alpaca account (for real-time Alpaca data), and/or Public.com credentials. Yahoo Finance works without credentials.
 
 ## Setup
 1) Clone the repo  
@@ -41,6 +42,9 @@ pip install -r requirements.txt
 
 4) Add environment variables (create a `.env` in the repo or export in your shell):
 ```bash
+# Massive.com (required for Massive source - provides professional Greeks)
+MASSIVE_API_KEY=your_massive_api_key
+
 # Alpaca (required for Alpaca source)
 ALPACA_API_KEY=your_key
 ALPACA_SECRET_KEY=your_secret
@@ -81,9 +85,10 @@ python -c "import options_screener as s; s.main('yahoo')"   # choose source manu
 - Public.com: the Streamlit UI will show a connection error if `PUBLIC_ACCESS_TOKEN` or `PUBLIC_ACCOUNT_ID` are missing.
 
 ## Data sources and rate limits
-- Alpaca: real-time equities/options via `alpaca_mcp_client.py`. Set `ALPACA_API_KEY/SECRET` and optional `ALPACA_PAPER_TRADE`.
-- Public.com: real-time via `public_api_client.py`. Requires `PUBLIC_ACCESS_TOKEN` (secret) and `PUBLIC_ACCOUNT_ID`.
-- Yahoo Finance: free fallback; no credentials required.
+- **Massive.com**: Professional-grade Greeks (delta, gamma, theta, vega, IV) directly from the API - no local calculation needed. Uses Yahoo Finance for stock prices and option premiums. Requires `MASSIVE_API_KEY`. Best choice for accurate Greeks.
+- **Alpaca**: real-time equities/options via `alpaca_mcp_client.py`. Set `ALPACA_API_KEY/SECRET` and optional `ALPACA_PAPER_TRADE`.
+- **Public.com**: real-time via `public_api_client.py`. Requires `PUBLIC_ACCESS_TOKEN` (secret) and `PUBLIC_ACCOUNT_ID`.
+- **Yahoo Finance**: free fallback; no credentials required. Greeks calculated locally using Black-Scholes.
 - Per-source delays can be tuned in the UI and persisted to `config.json` under `api_rate_limits`.
 
 ## Notes and precautions

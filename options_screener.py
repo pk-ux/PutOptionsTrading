@@ -2,12 +2,10 @@ import pandas as pd
 import numpy as np
 import json
 import os
-import requests
 from datetime import datetime, timedelta
 from scipy.stats import norm
 import yfinance as yf
-from alpaca_mcp_client import alpaca_mcp_client
-from public_api_client import public_client
+from massive_api_client import massive_client
 
 def load_config():
     """Load configuration from JSON file, create default if not exists"""
@@ -27,8 +25,7 @@ def load_config():
         },
         "screening_criteria": {
             "min_annualized_return": 20,
-            "min_delta": -0.3,
-            "max_delta": -0.1
+            "max_assignment_probability": 20
         },
         "output": {
             "sort_by": ["annualized_return"],
@@ -66,27 +63,6 @@ def save_config_file(config):
         print(f"Failed to save config: {str(e)}")
         return False
 
-def get_stock_price_alpaca(symbol):
-    """Get current stock price using Alpaca MCP Client"""
-    try:
-        print(f"Fetching real-time price for {symbol} from Alpaca MCP...")
-        quote = alpaca_mcp_client.get_stock_quote(symbol)
-        
-        if quote.get('success') and quote.get('mid_price', 0) > 0:
-            mid_price = quote['mid_price']
-            bid = quote.get('bid_price', 0)
-            ask = quote.get('ask_price', 0)
-            print(f"Real-time price for {symbol}: ${mid_price:.2f} (Bid: ${bid:.2f}, Ask: ${ask:.2f})")
-            return round(mid_price, 2)
-        else:
-            error_msg = quote.get('error', 'Unknown error')
-            print(f"ERROR: Failed to get real price for {symbol}: {error_msg}")
-            return None  # Return None instead of synthetic data
-        
-    except Exception as e:
-        print(f"ERROR: Exception getting stock price for {symbol}: {str(e)}")
-        return None  # Return None instead of synthetic data
-
 def get_stock_price_yahoo(symbol):
     """Get current stock price using Yahoo Finance API"""
     try:
@@ -105,34 +81,23 @@ def get_stock_price_yahoo(symbol):
         print(f"Error getting Yahoo Finance price for {symbol}: {str(e)} - using fallback")
         return generate_realistic_price(symbol)
 
-def get_stock_price_public(symbol):
-    """Get current stock price using Public.com API"""
+def get_stock_price_massive(symbol):
+    """Get current stock price using Yahoo Finance (for Massive mode)"""
     try:
-        if not public_client:
-            print(f"Public.com client not available for {symbol}")
+        if not massive_client:
+            print(f"Massive client not available for {symbol}")
             return None
-            
-        quote = public_client.get_stock_quote(symbol)
-        
-        if quote.get('success') and quote.get('mid_price', 0) > 0:
-            return round(quote['mid_price'], 2)
-        else:
-            error_msg = quote.get('error', 'Unknown error')
-            print(f"ERROR: Failed to get Public.com price for {symbol}: {error_msg}")
-            return None
-        
+        return massive_client.get_stock_price(symbol)
     except Exception as e:
-        print(f"ERROR: Exception getting Public.com price for {symbol}: {str(e)}")
+        print(f"ERROR getting Massive price for {symbol}: {str(e)}")
         return None
 
-def get_stock_price(symbol, api_source="alpaca"):
+def get_stock_price(symbol, api_source="massive"):
     """Get current stock price using selected API source"""
     if api_source.lower() == "yahoo":
         return get_stock_price_yahoo(symbol)
-    elif api_source.lower() == "public":
-        return get_stock_price_public(symbol)
-    else:
-        return get_stock_price_alpaca(symbol)
+    else:  # Default to massive
+        return get_stock_price_massive(symbol)
 
 def generate_realistic_price(symbol):
     """Generate realistic stock price based on symbol"""
@@ -212,229 +177,33 @@ def get_options_chain_yahoo(symbol, config):
         print(f"Error getting Yahoo Finance options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
 
-def get_options_chain_alpaca(symbol, config):
-    """Get real options chain data using Alpaca MCP Client"""
+def get_options_chain_massive(symbol, config):
+    """
+    Get options chain with Greeks from Massive.com API.
+    
+    Key advantage: Greeks (delta, gamma, theta, vega) come directly from the API.
+    NO local calculation needed - uses professional-grade market data.
+    """
     try:
-        print(f"Fetching REAL options data for {symbol} from Alpaca MCP...")
-        
-        max_dte = config['options_strategy']['max_dte']
-        min_dte = config['options_strategy'].get('min_dte', 0)
-        
-        # Calculate date range for filtering
-        base_date = datetime.now().date()
-        min_exp_date = (base_date + timedelta(days=min_dte)).strftime('%Y-%m-%d')
-        max_exp_date = (base_date + timedelta(days=max_dte)).strftime('%Y-%m-%d')
-        
-        # Get option contracts using MCP client
-        print(f"Getting put contracts for {symbol} from {min_exp_date} to {max_exp_date}...")
-        contracts = alpaca_mcp_client.get_option_contracts(symbol, min_exp_date, max_exp_date)
-        
-        if not contracts:
-            print(f"No put option contracts found for {symbol} in date range")
+        if not massive_client:
+            print(f"Massive client not available for {symbol}")
             return pd.DataFrame()
         
-        print(f"Found {len(contracts)} put contracts for {symbol}")
-        
-        # Extract contract symbols for pricing lookup
-        contract_symbols = [contract['symbol'] for contract in contracts]
-        
-        # Get option quotes using MCP client
-        print(f"Getting options pricing for {len(contract_symbols)} contracts...")
-        quotes_response = alpaca_mcp_client.get_option_quotes(contract_symbols)
-        
-        if not quotes_response.get('success') or not quotes_response.get('quotes'):
-            print(f"No options quotes found for {symbol}")
-            return pd.DataFrame()
-        
-        quotes = quotes_response['quotes']
-        
-        # Get current stock price for calculations
-        current_price = get_stock_price_alpaca(symbol)
-        if current_price is None:
-            print(f"ERROR: Cannot get stock price for {symbol} - skipping options chain")
-            return pd.DataFrame()
-        
-        # Process the data into our format
-        options_data = []
-        
-        for contract in contracts:
-            contract_symbol = contract['symbol']
-            quote = quotes.get(contract_symbol, {})
-            
-            if not quote:
-                continue
-                
-            # Extract pricing data
-            price = quote.get('mid_price', 0)
-            if price <= 0:
-                continue
-            
-            # Calculate DTE
-            try:
-                exp_date = pd.to_datetime(contract['expiration_date']).date()
-                dte = (exp_date - base_date).days
-            except:
-                continue  # Skip if expiration date is invalid
-            
-            # Get strike price
-            try:
-                strike = float(contract['strike_price'])
-            except:
-                continue  # Skip if strike price is invalid
-                
-            # Calculate implied volatility and delta using Black-Scholes
-            if current_price > 0 and strike > 0 and dte > 0 and price > 0:
-                S = current_price
-                K = strike  
-                T = dte / 365
-                r = 0.05  # Risk-free rate
-                
-                # Calculate implied volatility using Newton-Raphson method
-                def black_scholes_put(S, K, T, r, sigma):
-                    if sigma <= 0 or T <= 0:
-                        return 0
-                    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
-                    d2 = d1 - sigma*np.sqrt(T)
-                    put_price = K * np.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-                    return max(put_price, 0)
-                
-                def vega(S, K, T, r, sigma):
-                    if sigma <= 0 or T <= 0:
-                        return 0
-                    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
-                    return S * np.sqrt(T) * norm.pdf(d1)
-                
-                # Newton-Raphson to find implied volatility
-                sigma = 0.3  # Initial guess
-                for i in range(20):  # Max iterations
-                    bs_price = black_scholes_put(S, K, T, r, sigma)
-                    price_diff = bs_price - price
-                    if abs(price_diff) < 0.001:
-                        break
-                    vega_val = vega(S, K, T, r, sigma)
-                    if vega_val == 0:
-                        break
-                    sigma = sigma - price_diff / vega_val
-                    sigma = max(0.01, min(sigma, 5.0))  # Keep IV reasonable
-                
-                # Calculate delta using the calculated IV
-                d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
-                delta = -norm.cdf(-d1)
-                
-                implied_vol = sigma
-            else:
-                delta = 0
-                implied_vol = 0
-            
-            # Build options row with MCP data
-            option_row = {
-                'symbol': symbol,
-                'strike': strike,
-                'lastPrice': float(price),
-                'volume': int(quote.get('volume', 0)),
-                'open_interest': int(contract.get('open_interest', 0)),
-                'openInterest': int(contract.get('open_interest', 0)),
-                'impliedVolatility': float(implied_vol),  # Calculated real IV from option prices
-                'delta': float(delta),
-                'expiry': contract['expiration_date'],
-                'dte': dte,
-                'contract_symbol': contract_symbol
-            }
-            
-            options_data.append(option_row)
-        
-        if options_data:
-            options_df = pd.DataFrame(options_data)
-            print(f"Retrieved {len(options_df)} REAL put options from Alpaca MCP for {symbol}")
-            return options_df
-        else:
-            print(f"No valid options data found for {symbol} from Alpaca MCP")
-            return pd.DataFrame()
-            
-    except Exception as e:
-        print(f"Error getting Alpaca MCP options chain for {symbol}: {str(e)}")
-        return pd.DataFrame()
-
-def get_options_chain_public(symbol, config):
-    """Get real options chain data using Public.com API"""
-    try:
-        if not public_client:
-            print(f"Public.com client not available for {symbol}")
-            return pd.DataFrame()
-            
-        print(f"Fetching REAL options data for {symbol} from Public.com...")
-        
-        max_dte = config['options_strategy']['max_dte']
-        min_dte = config['options_strategy'].get('min_dte', 0)
-        
-        # Get available expiration dates
-        exp_result = public_client.get_option_expirations(symbol)
-        if not exp_result.get('success'):
-            print(f"Failed to get expirations for {symbol}: {exp_result.get('error')}")
-            return pd.DataFrame()
-        
-        # Filter expirations by DTE range
-        expirations = exp_result['expirations']
-        today = datetime.now().date()
-        
-        valid_expirations = []
-        for exp_date_str in expirations:
-            exp_date = datetime.strptime(exp_date_str, '%Y-%m-%d').date()
-            dte = (exp_date - today).days
-            if min_dte <= dte <= max_dte:
-                valid_expirations.append(exp_date_str)
-        
-        print(f"Found {len(valid_expirations)} valid expirations for {symbol} (DTE: {min_dte}-{max_dte})")
-        
-        if not valid_expirations:
-            print(f"No expirations found for {symbol} in DTE range {min_dte}-{max_dte}")
-            return pd.DataFrame()
-        
-        # Get option chains for each valid expiration
-        all_options = pd.DataFrame()
-        
-        for exp_date in valid_expirations:
-            try:
-                chain_result = public_client.get_option_chain(symbol, exp_date)
-                
-                if chain_result.get('success') and not chain_result['options'].empty:
-                    options_df = chain_result['options']
-                    
-                    # Calculate DTE
-                    exp_date_dt = datetime.strptime(exp_date, '%Y-%m-%d').date()
-                    options_df['calendar_days'] = (exp_date_dt - today).days
-                    
-                    all_options = pd.concat([all_options, options_df], ignore_index=True)
-                    print(f"Retrieved {len(options_df)} put options for {symbol} {exp_date}")
-                else:
-                    print(f"No options data for {symbol} {exp_date}")
-                    
-            except Exception as e:
-                print(f"Error processing {symbol} for date {exp_date}: {str(e)}")
-                continue
-        
-        if not all_options.empty:
-            print(f"Retrieved {len(all_options)} REAL put options from Public.com for {symbol}")
-        else:
-            print(f"No options data found for {symbol}")
-            
-        return all_options
+        print(f"Fetching options with API Greeks for {symbol} from Massive.com...")
+        return massive_client.get_options_chain(symbol, config)
         
     except Exception as e:
-        print(f"Error getting Public.com options chain for {symbol}: {str(e)}")
+        print(f"Error getting Massive.com options chain for {symbol}: {str(e)}")
         return pd.DataFrame()
 
-def get_options_chain(symbol, config, api_source="alpaca"):
+def get_options_chain(symbol, config, api_source="massive"):
     """Get real options chain data using selected API source"""
     if api_source.lower() == "yahoo":
         print(f"Using Yahoo Finance for options data for {symbol}")
         return get_options_chain_yahoo(symbol, config)
-    elif api_source.lower() == "public":
-        print(f"Using Public.com for options data for {symbol}")
-        return get_options_chain_public(symbol, config)
-    else:
-        print(f"Using Alpaca API for options data for {symbol}")
-        return get_options_chain_alpaca(symbol, config)
+    else:  # Default to massive
+        print(f"Using Massive.com API for options data for {symbol}")
+        return get_options_chain_massive(symbol, config)
 
 def calculate_metrics(options_chain, current_price):
     """Calculate additional metrics for options"""
@@ -473,12 +242,15 @@ def screen_options(options_df, config):
     if 'openInterest' in options_df.columns and 'open_interest' not in options_df.columns:
         options_df['open_interest'] = options_df['openInterest']
     
+    # Convert max assignment probability to delta threshold
+    # e.g., 20% probability = delta >= -0.20 (delta between -0.20 and 0)
+    max_prob = criteria.get('max_assignment_probability', 20) / 100
+    
     # Apply filtering conditions
     conditions = {
         'volume': options_df['volume'] >= strategy['min_volume'],
         'open_interest': options_df['open_interest'] >= strategy['min_open_interest'],
-        'min_delta': options_df['delta'] >= criteria['min_delta'],
-        'max_delta': options_df['delta'] <= criteria['max_delta'],
+        'delta': options_df['delta'] >= -max_prob,  # Delta between -max_prob and 0
         'annualized_return': options_df['annualized_return'] >= criteria['min_annualized_return'],
         'out_of_the_money': options_df['out_of_the_money']
     }
@@ -487,8 +259,7 @@ def screen_options(options_df, config):
     filtered = options_df[
         conditions['volume'] &
         conditions['open_interest'] &
-        conditions['min_delta'] &
-        conditions['max_delta'] &
+        conditions['delta'] &
         conditions['annualized_return'] &
         conditions['out_of_the_money']
     ]
@@ -509,7 +280,7 @@ def format_output(filtered_df, current_price=None):
     
     display_columns = [
         'symbol', 'current_price', 'strike', 'lastPrice', 'volume', 'open_interest',
-        'impliedVolatility', 'delta', 'gamma', 'theta', 'vega', 'rho', 'annualized_return', 'expiry', 'calendar_days'
+        'impliedVolatility', 'delta', 'theta', 'annualized_return', 'expiry', 'calendar_days'
     ]
     
     formatted = filtered_df.copy()
