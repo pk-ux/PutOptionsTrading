@@ -2,8 +2,15 @@ import streamlit as st
 import pandas as pd
 import time
 from options_screener import (
-    load_config, get_options_chain, calculate_metrics,
-    screen_options, format_output, save_config_file, get_stock_price
+    load_config,
+    calculate_metrics,
+    screen_options,
+    format_output,
+    save_config_file,
+    get_options_chain_massive,
+    get_options_chain_yahoo,
+    get_stock_price_massive,
+    get_stock_price_yahoo,
 )
 from massive_api_client import massive_client
 import os
@@ -11,7 +18,7 @@ import os
 # Page configuration
 st.set_page_config(
     page_title="Put Options Screener",
-    page_icon="📊",
+    page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -49,38 +56,36 @@ if 'processing' not in st.session_state:
 if 'stop_processing' not in st.session_state:
     st.session_state.stop_processing = False
 
-if 'api_source' not in st.session_state:
-    st.session_state.api_source = "massive"
+if 'used_yahoo' not in st.session_state:
+    # Track whether Yahoo Finance was used as a fallback in the last run
+    st.session_state.used_yahoo = False
+
+# ============================================================================
+# Helper function to get live config from UI values
+# ============================================================================
+def get_live_config():
+    """Build config from current UI widget values"""
+    return {
+        'data': {
+            'symbols': st.session_state.config['data']['symbols']  # Already updated on change
+        },
+        'options_strategy': {
+            'max_dte': st.session_state.max_dte,
+            'min_dte': st.session_state.min_dte,
+            'min_volume': st.session_state.min_volume,
+            'min_open_interest': st.session_state.min_oi
+        },
+        'screening_criteria': {
+            'min_annualized_return': st.session_state.min_return,
+            'max_assignment_probability': st.session_state.max_assignment_prob
+        },
+        'output': st.session_state.config.get('output', {})
+    }
 
 # ============================================================================
 # SIDEBAR - Configuration (Compact)
 # ============================================================================
 with st.sidebar:
-    # Data Source (inline with status)
-    st.caption("DATA SOURCE")
-    api_options = ["massive", "yahoo"]
-    if st.session_state.api_source not in api_options:
-        st.session_state.api_source = "massive"
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        api_source = st.radio(
-            "Source",
-            options=api_options,
-            format_func=lambda x: "Massive.com" if x == "massive" else "Yahoo Finance",
-            index=api_options.index(st.session_state.api_source),
-            label_visibility="collapsed",
-            horizontal=True
-        )
-        st.session_state.api_source = api_source
-    with col2:
-        if api_source == "massive" and os.getenv('MASSIVE_API_KEY'):
-            st.markdown("✓")
-        elif api_source == "yahoo":
-            st.markdown("✓")
-        else:
-            st.markdown("✗")
-    
     # Expiration & Liquidity in one row each
     st.caption("EXPIRATION (DTE)")
     col1, col2 = st.columns(2)
@@ -105,11 +110,12 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         min_return = st.number_input("Min Ret%", min_value=0.0, max_value=500.0,
-            value=float(st.session_state.config['screening_criteria']['min_annualized_return']), key='min_return')
+            value=float(st.session_state.config['screening_criteria']['min_annualized_return']), 
+            key='min_return', help="Minimum Annualized Return")
     with col2:
         max_assignment_prob = st.number_input("Max Prob%", min_value=5, max_value=50,
             value=int(st.session_state.config['screening_criteria'].get('max_assignment_probability', 20)),
-            key='max_assignment_prob', help="Delta: 0 to -X%")
+            key='max_assignment_prob', help="Maximum Probability of Assignment")
     
     # Watchlist
     st.caption("WATCHLIST")
@@ -123,14 +129,9 @@ with st.sidebar:
             st.session_state.config['data']['symbols'] = new_symbols
     
     # Save button
-    if st.button("Save", width="stretch"):
-        st.session_state.config['options_strategy']['max_dte'] = st.session_state.max_dte
-        st.session_state.config['options_strategy']['min_dte'] = st.session_state.min_dte
-        st.session_state.config['options_strategy']['min_volume'] = st.session_state.min_volume
-        st.session_state.config['options_strategy']['min_open_interest'] = st.session_state.min_oi
-        st.session_state.config['screening_criteria']['min_annualized_return'] = st.session_state.min_return
-        st.session_state.config['screening_criteria']['max_assignment_probability'] = st.session_state.max_assignment_prob
-        save_config_file(st.session_state.config)
+    if st.button("Save", use_container_width=True):
+        config_to_save = get_live_config()
+        save_config_file(config_to_save)
         st.success("Saved!")
 
 # ============================================================================
@@ -178,54 +179,74 @@ with col4:
 # Processing Functions
 # ============================================================================
 
-def process_single_symbol(symbol, config, api_source="massive"):
-    """Process a single symbol and return results"""
-    try:
-        current_price = get_stock_price(symbol, api_source)
-        options = get_options_chain(symbol, config, api_source)
-        
-        if options.empty:
-            return None, f"No options data for {symbol}"
-        
-        options = calculate_metrics(options, current_price)
-        filtered = screen_options(options, config)
-        formatted = format_output(filtered, current_price)
-        
-        if not formatted.empty:
-            return formatted, f"Found {len(formatted)} options for {symbol}"
-        else:
-            return None, f"No qualifying options for {symbol}"
-            
-    except Exception as e:
-        return None, f"Error: {symbol} - {str(e)}"
+def fetch_data_with_fallback(symbol, config):
+    """
+    Fetch current price and options chain, using Massive.com by default
+    and automatically falling back to Yahoo Finance if needed.
+    Returns (formatted_results_df or None, message, yahoo_used: bool)
+    """
+    yahoo_used = False
+
+    # Price: try Massive first, then Yahoo
+    current_price = get_stock_price_massive(symbol)
+    if current_price is None:
+        current_price = get_stock_price_yahoo(symbol)
+        yahoo_used = True
+
+    # Options chain: try Massive first, then Yahoo
+    options = get_options_chain_massive(symbol, config)
+    if options.empty:
+        yahoo_chain = get_options_chain_yahoo(symbol, config)
+        if not yahoo_chain.empty:
+            options = yahoo_chain
+            yahoo_used = True
+
+    if options.empty:
+        return None, f"No options data for {symbol}", yahoo_used
+
+    options = calculate_metrics(options, current_price)
+    filtered = screen_options(options, config)
+    formatted = format_output(filtered, current_price)
+
+    if not formatted.empty:
+        return formatted, f"Found {len(formatted)} options for {symbol}", yahoo_used
+    else:
+        return None, f"No qualifying options for {symbol}", yahoo_used
+
 
 def run_screening(symbols):
     """Run screening for given symbols"""
     st.session_state.processing = True
     st.session_state.stop_processing = False
     st.session_state.results = {}
-    
+    st.session_state.used_yahoo = False
+
+    # Get live config from current UI values
+    live_config = get_live_config()
+
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
+
     total = len(symbols)
     for i, symbol in enumerate(symbols):
         if st.session_state.stop_processing:
             status_text.warning("Screening stopped")
             break
-        
+
         status_text.info(f"Processing {symbol}... ({i+1}/{total})")
         progress_bar.progress((i + 1) / total)
-        
-        result, message = process_single_symbol(
-            symbol, 
-            st.session_state.config, 
-            st.session_state.api_source
-        )
-        
+
+        try:
+            result, message, yahoo_used = fetch_data_with_fallback(symbol, live_config)
+        except Exception as e:
+            result, message, yahoo_used = None, f"Error: {symbol} - {str(e)}", False
+
+        if yahoo_used:
+            st.session_state.used_yahoo = True
+
         if result is not None and not result.empty:
             st.session_state.results[symbol] = result
-    
+
     # Create summary if multiple results
     if len(st.session_state.results) > 1:
         summary_rows = []
@@ -234,7 +255,7 @@ def run_screening(symbols):
                 summary_rows.append(st.session_state.results[sym].iloc[0])
         if summary_rows:
             st.session_state.results['Summary'] = pd.DataFrame(summary_rows)
-    
+
     progress_bar.empty()
     status_text.empty()
     st.session_state.processing = False
@@ -355,11 +376,18 @@ if st.session_state.results:
             display_results_table(
                 st.session_state.results[selected_view],
                 selected_view,
-                st.session_state.api_source
+                'massive'  # Massive.com is the primary source for Greeks
             )
+
+            # Yahoo Finance fallback disclaimer
+            if st.session_state.used_yahoo:
+                st.caption(
+                    "Note: When Massive.com data was unavailable, prices or options "
+                    "data were retrieved from Yahoo Finance."
+                )
             
             # Show news for individual tickers (not Summary)
-            if selected_view != 'Summary' and st.session_state.api_source == 'massive' and massive_client:
+            if selected_view != 'Summary' and massive_client:
                 st.caption("Latest News (Last 7 Days)")
                 news_items = massive_client.get_ticker_news(selected_view, limit=10, max_age_days=7)
                 if news_items:

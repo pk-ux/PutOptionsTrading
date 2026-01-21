@@ -1,8 +1,6 @@
 {
     "data": {
         "symbols": [
-            "SPY",
-            "QQQ",
             "AVGO",
             "TSLA",
             "META",
@@ -12,6 +10,7 @@
             "AMZN",
             "APP",
             "IBIT",
+            "ETHA",
             "PLTR",
             "MSTR",
             "COIN",
@@ -24,7 +23,9 @@
             "IREN",
             "APLD",
             "BMNR",
-            "ROOT"
+            "RGTI",
+            "OKLO",
+            "APLD"
         ]
     },
     "options_strategy": {
