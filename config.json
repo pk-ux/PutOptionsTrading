@@ -25,14 +25,15 @@
             "BMNR",
             "RGTI",
             "OKLO",
-            "APLD"
+            "APLD",
+            "CLSK"
         ]
     },
     "options_strategy": {
         "max_dte": 30,
         "min_dte": 15,
-        "min_volume": 5,
-        "min_open_interest": 10
+        "min_volume": 50,
+        "min_open_interest": 50
     },
     "screening_criteria": {
         "min_annualized_return": 30.0,

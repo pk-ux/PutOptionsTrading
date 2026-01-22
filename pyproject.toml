@@ -1,16 +1,27 @@
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
+name = "put-options-screener"
+version = "1.0.0"
+description = "Screen put options for profitable opportunities with real-time market data"
 requires-python = ">=3.11"
 dependencies = [
-    "alpaca-py>=0.42.1",
-    "alpaca-trade-api>=0.48",
-    "numpy>=2.3.2",
-    "pandas>=2.3.2",
-    "python-dotenv>=1.1.1",
-    "requests>=2.32.5",
-    "scipy>=1.16.1",
-    "streamlit>=1.49.1",
-    "yfinance>=0.2.65",
+    "streamlit>=1.28.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "yfinance>=0.2.28",
+    "massive>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+backend = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "pyjwt>=2.8.0",
+    "cryptography>=41.0.0",
+    "stripe>=7.0.0",
+    "httpx>=0.25.0",
 ]

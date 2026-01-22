@@ -1,98 +1,186 @@
 # Put Options Screener
 
-Interactive Streamlit app that scans put option chains for a list of stocks, computes key metrics (delta, annualized return, implied volatility), and highlights candidates that meet your custom filters. Data can come from Massive.com (professional Greeks), Alpaca (real-time), Public.com (real-time), or Yahoo Finance (free).
+Interactive Streamlit app that scans put option chains for a list of stocks, computes key metrics (delta, annualized return, implied volatility), and highlights candidates that meet your custom filters. Data comes from Massive.com (professional Greeks) with Yahoo Finance as a fallback.
 
-## What this project does
-- Loads a configurable list of tickers and option screening rules from `config.json`.
-- Pulls quotes/option chains from the selected data source.
-- Calculates returns and Greeks, filters on volume/OI/delta/return thresholds, and presents the top candidates in an interactive UI.
-- Lets you screen one symbol or many, view a summary table, and adjust settings without editing code.
+## Features
 
-## Project structure (key files)
-- `app.py` – Streamlit UI, state management, and orchestration.
-- `options_screener.py` – Data fetching, metrics, filtering, and formatting.
-- `massive_api_client.py` – Massive.com API client (professional Greeks from API, no local calculation).
-- `alpaca_mcp_client.py` – Thin wrapper around Alpaca APIs for quotes and option contracts.
-- `public_api_client.py` – Public.com API client (quotes, chains, Greeks).
-- `config.json` – Default symbols and screening parameters you can edit or update via the UI.
-- `test_quote.py` – Quick script to verify Alpaca credentials can fetch a quote.
+- **Professional-grade Greeks**: Delta, gamma, theta, vega directly from Massive.com API
+- **Automatic fallback**: Uses Yahoo Finance when Massive.com data is unavailable
+- **Responsive UI**: Works on desktop and mobile browsers
+- **Real-time news**: Latest news headlines for screened tickers
+- **Configurable filters**: DTE, volume, open interest, return %, assignment probability
 
-## Prerequisites
+## Quick Start (Local Development)
+
+### Prerequisites
 - Python 3.11+
-- Massive.com API key (for professional-grade Greeks), Alpaca account (for real-time Alpaca data), and/or Public.com credentials. Yahoo Finance works without credentials.
+- Massive.com API key (https://massive.com)
 
-## Setup
-1) Clone the repo  
+### Setup
+
+1. Clone the repo
 ```bash
 git clone https://github.com/your-org/PutOptionsTrading.git
 cd PutOptionsTrading
 ```
 
-2) Create and activate a virtual environment  
+2. Create and activate a virtual environment
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 ```
 
-3) Install dependencies  
+3. Install dependencies
 ```bash
 pip install -r requirements.txt
-# or: pip install -e .  (uses pyproject.toml)
 ```
 
-4) Add environment variables (create a `.env` in the repo or export in your shell):
+4. Create a `.env` file with your API key:
 ```bash
-# Massive.com (required for Massive source - provides professional Greeks)
 MASSIVE_API_KEY=your_massive_api_key
-
-# Alpaca (required for Alpaca source)
-ALPACA_API_KEY=your_key
-ALPACA_SECRET_KEY=your_secret
-ALPACA_PAPER_TRADE=True  # or False if using live
-
-# Public.com (required for Public source)
-PUBLIC_ACCESS_TOKEN=your_public_secret_token
-PUBLIC_ACCOUNT_ID=your_public_account_id
 ```
-These are loaded automatically via `python-dotenv`.
 
-5) (Optional) Adjust defaults in `config.json`  
-- Symbols to screen: `data.symbols`  
-- Strategy window: `options_strategy.max_dte`, `min_dte`  
-- Liquidity filters: `options_strategy.min_volume`, `min_open_interest`  
-- Return/risk filters: `screening_criteria.min_annualized_return`, `min_delta`, `max_delta`  
-- Sorting/limits: `output.sort_by`, `sort_order`, `max_results`
-You can also change these from the Streamlit UI and click “Save Settings” to persist.
-
-## Running the app
+5. Run the app
 ```bash
 streamlit run app.py
 ```
-Then open the provided local URL. In the UI:
-- Pick your data source (Alpaca, Public.com, or Yahoo).
-- Select a symbol or choose “Screen All Stocks”.
-- View per-ticker results or the summary table; adjust filters and re-run.
 
-## Command-line usage
-You can run the screener without the UI (uses the configured symbols and filters):
-```bash
-python options_screener.py          # defaults to Alpaca if keys are present
-python -c "import options_screener as s; s.main('yahoo')"   # choose source manually
+## Project Structure
+
+```
+PutOptionsTrading/
+├── app.py                 # Streamlit UI (supports local + SaaS modes)
+├── options_screener.py    # Core screening logic
+├── massive_api_client.py  # Massive.com API client
+├── config.json           # Default settings
+├── requirements.txt      # Frontend dependencies
+├── backend/              # FastAPI backend (for SaaS deployment)
+│   ├── main.py          # API endpoints
+│   ├── requirements.txt # Backend dependencies
+│   └── Procfile         # Railway start command
+├── DEPLOY.md            # Step-by-step deployment guide
+└── railway.json         # Railway configuration
 ```
 
-## Verifying credentials
-- Alpaca: `python test_quote.py` (prints whether keys are found and fetches a quote).  
-- Public.com: the Streamlit UI will show a connection error if `PUBLIC_ACCESS_TOKEN` or `PUBLIC_ACCOUNT_ID` are missing.
+## Configuration
 
-## Data sources and rate limits
-- **Massive.com**: Professional-grade Greeks (delta, gamma, theta, vega, IV) directly from the API - no local calculation needed. Uses Yahoo Finance for stock prices and option premiums. Requires `MASSIVE_API_KEY`. Best choice for accurate Greeks.
-- **Alpaca**: real-time equities/options via `alpaca_mcp_client.py`. Set `ALPACA_API_KEY/SECRET` and optional `ALPACA_PAPER_TRADE`.
-- **Public.com**: real-time via `public_api_client.py`. Requires `PUBLIC_ACCESS_TOKEN` (secret) and `PUBLIC_ACCOUNT_ID`.
-- **Yahoo Finance**: free fallback; no credentials required. Greeks calculated locally using Black-Scholes.
-- Per-source delays can be tuned in the UI and persisted to `config.json` under `api_rate_limits`.
+Edit `config.json` or use the sidebar in the UI:
 
-## Notes and precautions
-- Keep API keys in environment variables or a local `.env`; do not commit secrets.
-- The screener focuses on put contracts; ensure you understand options risk before trading.
-- Some data sources may throttle heavy usage; adjust the configured delay if you encounter rate limits.
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `max_dte` | Maximum days to expiration | 45 |
+| `min_dte` | Minimum days to expiration | 15 |
+| `min_volume` | Minimum option volume | 10 |
+| `min_open_interest` | Minimum open interest | 10 |
+| `min_annualized_return` | Minimum return % | 20 |
+| `max_assignment_probability` | Max probability (delta) % | 20 |
 
+## Architecture
+
+The application supports two modes: **Local** (for development) and **SaaS** (for production deployment).
+
+### Local Mode Architecture
+
+```mermaid
+flowchart LR
+    User[User Browser]
+    Streamlit[Streamlit UI]
+    Screener[Options Screener]
+    Massive[Massive.com]
+    Yahoo[Yahoo Finance]
+    
+    User --> Streamlit
+    Streamlit --> Screener
+    Screener --> Massive
+    Screener --> Yahoo
+```
+
+In local mode, the Streamlit app directly calls the Massive.com API for options data and Greeks, with Yahoo Finance as a fallback when Massive.com data is unavailable.
+
+### SaaS Mode Architecture
+
+```mermaid
+flowchart LR
+    User[User Browser]
+    Clerk[Clerk Auth]
+    Streamlit[Streamlit UI]
+    FastAPI[FastAPI Backend]
+    Postgres[(PostgreSQL)]
+    Massive[Massive.com]
+    Yahoo[Yahoo Finance]
+    Stripe[Stripe]
+    
+    User --> Clerk
+    Clerk --> Streamlit
+    Streamlit --> FastAPI
+    FastAPI --> Postgres
+    FastAPI --> Massive
+    FastAPI --> Yahoo
+    Stripe -->|webhooks| FastAPI
+```
+
+In SaaS mode:
+- **Clerk** handles authentication (Google/Apple/Email sign-in)
+- **FastAPI Backend** manages user sessions, usage limits, and API calls
+- **PostgreSQL** stores user data and subscription status
+- **Stripe** processes subscription payments via webhooks
+
+## Deploying as a Paid SaaS
+
+This app is ready to deploy as a paid subscription service with:
+- **Clerk**: Google/Apple/Email authentication (free up to 10K users)
+- **Stripe**: Subscription billing ($9.99/mo Pro plan)
+- **Railway**: Hosting (~$15/mo)
+- **PostgreSQL**: User management
+
+See **[DEPLOY.md](DEPLOY.md)** for step-by-step instructions.
+
+### Subscription Tiers
+
+| Tier | Price | Limits |
+|------|-------|--------|
+| Free | $0 | 5 screens/day, 5 symbols max |
+| Pro | $9.99/mo | Unlimited screens, 50 symbols |
+
+## Data Sources
+
+- **Massive.com** (Primary): Professional Greeks from API - no local calculation
+- **Yahoo Finance** (Fallback): Free data, Greeks calculated locally via Black-Scholes
+
+## API Endpoints (Backend)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | No | Health check |
+| `/api/v1/me` | GET | Yes | Current user info + settings |
+| `/api/v1/settings` | GET | Yes | Get user settings |
+| `/api/v1/settings` | PUT | Yes | Update user settings |
+| `/api/v1/screen` | POST | Yes | Run screener |
+| `/api/v1/checkout` | POST | Yes | Create Stripe checkout |
+| `/webhooks/stripe` | POST | No | Stripe webhook handler |
+
+## Development
+
+### Running Backend Locally
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+### Running Frontend with Backend
+```bash
+# Set environment variable to point to backend
+export API_URL=http://localhost:8000
+streamlit run app.py
+```
+
+## Security Notes
+
+- Keep API keys in environment variables or `.env`
+- Never commit secrets to version control
+- In production, restrict CORS to your frontend domain
+
+## License
+
+MIT

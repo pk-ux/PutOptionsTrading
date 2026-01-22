@@ -1,21 +1,65 @@
+"""
+Put Options Screener - Streamlit Frontend
+==========================================
+Supports two modes:
+1. Local mode: Direct API calls (for development)
+2. API mode: Calls FastAPI backend (for production SaaS)
+"""
+
 import streamlit as st
 import pandas as pd
-import time
-from options_screener import (
-    load_config,
-    calculate_metrics,
-    screen_options,
-    format_output,
-    save_config_file,
-    get_options_chain_massive,
-    get_options_chain_yahoo,
-    get_stock_price_massive,
-    get_stock_price_yahoo,
-)
-from massive_api_client import massive_client
+import requests
 import os
+from dotenv import load_dotenv
 
-# Page configuration
+# Load environment variables
+load_dotenv()
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+# API URL for backend (if deployed as SaaS)
+API_URL = os.getenv("API_URL", "")
+CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY", "")
+
+# Determine if we're in SaaS mode (has API backend) or local mode
+SAAS_MODE = bool(API_URL)
+
+# Import local modules only in local mode
+if not SAAS_MODE:
+    from options_screener import (
+        load_config,
+        calculate_metrics,
+        screen_options,
+        format_output,
+        save_config_file,
+        get_options_chain_massive,
+        get_options_chain_yahoo,
+        get_stock_price_massive,
+        get_stock_price_yahoo,
+    )
+    from massive_api_client import massive_client
+else:
+    massive_client = None
+    
+    def load_config():
+        """Default config for SaaS mode"""
+        return {
+            "data": {"symbols": ["AAPL", "MSFT", "GOOGL", "SPY", "QQQ"]},
+            "options_strategy": {"max_dte": 45, "min_dte": 15, "min_volume": 10, "min_open_interest": 10},
+            "screening_criteria": {"min_annualized_return": 20, "max_assignment_probability": 20},
+            "output": {"sort_by": ["annualized_return"], "sort_order": "descending", "max_results": 50}
+        }
+    
+    def save_config_file(config):
+        """In SaaS mode, config is per-session only"""
+        pass
+
+# =============================================================================
+# Page Configuration
+# =============================================================================
+
 st.set_page_config(
     page_title="Put Options Screener",
     page_icon="🎯",
@@ -23,13 +67,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Reduce top padding and compact sidebar
+# Responsive CSS for desktop and mobile browsers
 st.markdown("""
 <style>
+    /* Reduce top padding */
     .block-container {
         padding-top: 1rem;
         padding-bottom: 1rem;
     }
+    
     /* Compact sidebar */
     section[data-testid="stSidebar"] .block-container {
         padding-top: 1rem;
@@ -40,10 +86,59 @@ st.markdown("""
     section[data-testid="stSidebar"] hr {
         margin: 0.5rem 0;
     }
+    
+    /* Upgrade banner styling */
+    .upgrade-banner {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        text-align: center;
+    }
+    .upgrade-banner a {
+        color: white;
+        font-weight: bold;
+    }
+    
+    /* Mobile responsive adjustments */
+    @media (max-width: 768px) {
+        .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        .stButton > button {
+            width: 100% !important;
+            margin-bottom: 0.5rem;
+        }
+        .stDataFrame {
+            font-size: 0.8rem;
+        }
+        section[data-testid="stSidebar"] {
+            width: 280px !important;
+        }
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        input[type="number"] {
+            font-size: 16px !important;
+        }
+    }
+    
+    /* Tablet adjustments */
+    @media (max-width: 1024px) and (min-width: 769px) {
+        .block-container {
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
+# =============================================================================
+# Session State Initialization
+# =============================================================================
+
 if 'config' not in st.session_state:
     st.session_state.config = load_config()
 
@@ -57,17 +152,142 @@ if 'stop_processing' not in st.session_state:
     st.session_state.stop_processing = False
 
 if 'used_yahoo' not in st.session_state:
-    # Track whether Yahoo Finance was used as a fallback in the last run
     st.session_state.used_yahoo = False
 
-# ============================================================================
-# Helper function to get live config from UI values
-# ============================================================================
+# SaaS mode session state
+if 'user_info' not in st.session_state:
+    st.session_state.user_info = None
+
+if 'auth_token' not in st.session_state:
+    st.session_state.auth_token = None
+
+if 'screens_remaining' not in st.session_state:
+    st.session_state.screens_remaining = None
+
+# =============================================================================
+# Authentication (SaaS Mode)
+# =============================================================================
+
+def check_auth():
+    """Check if user is authenticated in SaaS mode"""
+    if not SAAS_MODE:
+        return True  # Local mode - no auth needed
+    
+    # Dev mode: auto-authenticate when Clerk is not configured
+    if not CLERK_PUBLISHABLE_KEY:
+        st.session_state.auth_token = "dev_mode_token"
+        return True
+    
+    # Check for token in query params (from Clerk redirect)
+    token = st.query_params.get("token")
+    if token:
+        st.session_state.auth_token = token
+        # Clear from URL
+        st.query_params.clear()
+    
+    return st.session_state.auth_token is not None
+
+
+def get_auth_headers():
+    """Get authorization headers for API calls"""
+    if st.session_state.auth_token:
+        return {"Authorization": f"Bearer {st.session_state.auth_token}"}
+    return {}
+
+
+def fetch_user_info():
+    """Fetch current user info from API (includes settings)"""
+    if not SAAS_MODE or not st.session_state.auth_token:
+        return None
+    
+    try:
+        resp = requests.get(
+            f"{API_URL}/api/v1/me",
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        if resp.status_code == 200:
+            user_data = resp.json()
+            # Load user settings into session state config
+            if user_data.get("settings"):
+                settings = user_data["settings"]
+                st.session_state.config = {
+                    'data': {'symbols': settings.get('symbols', [])},
+                    'options_strategy': {
+                        'max_dte': settings.get('max_dte', 45),
+                        'min_dte': settings.get('min_dte', 15),
+                        'min_volume': settings.get('min_volume', 10),
+                        'min_open_interest': settings.get('min_open_interest', 10)
+                    },
+                    'screening_criteria': {
+                        'min_annualized_return': settings.get('min_annualized_return', 20.0),
+                        'max_assignment_probability': settings.get('max_assignment_probability', 20)
+                    },
+                    'output': {'sort_by': ['annualized_return'], 'sort_order': 'descending', 'max_results': 50}
+                }
+            return user_data
+        elif resp.status_code == 401:
+            st.session_state.auth_token = None
+            return None
+    except Exception as e:
+        st.error(f"Failed to fetch user info: {e}")
+    return None
+
+
+def show_login_page():
+    """Display login page for unauthenticated users"""
+    st.title("🎯 Put Options Screener")
+    st.markdown("### Discover profitable put option opportunities")
+    
+    st.info("Please sign in to access the screener.")
+    
+    if CLERK_PUBLISHABLE_KEY:
+        # Clerk hosted login URL
+        login_url = f"https://accounts.clerk.dev/sign-in?redirect_url={st.get_option('browser.serverAddress')}"
+        st.markdown(f"[Sign in with Google/Apple]({login_url})")
+    else:
+        st.warning("Authentication not configured. Please set CLERK_PUBLISHABLE_KEY.")
+    
+    st.stop()
+
+
+def save_settings_to_api():
+    """Save current settings to the backend API"""
+    if not SAAS_MODE or not st.session_state.auth_token:
+        return False
+    
+    try:
+        settings_data = {
+            "symbols": st.session_state.config['data']['symbols'],
+            "max_dte": st.session_state.max_dte,
+            "min_dte": st.session_state.min_dte,
+            "min_volume": st.session_state.min_volume,
+            "min_open_interest": st.session_state.min_oi,
+            "min_annualized_return": st.session_state.min_return,
+            "max_assignment_probability": st.session_state.max_assignment_prob
+        }
+        
+        resp = requests.put(
+            f"{API_URL}/api/v1/settings",
+            json=settings_data,
+            headers=get_auth_headers(),
+            timeout=10
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        st.error(f"Failed to save settings: {e}")
+        return False
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
 def get_live_config():
     """Build config from current UI widget values"""
     return {
         'data': {
-            'symbols': st.session_state.config['data']['symbols']  # Already updated on change
+            'symbols': st.session_state.config['data']['symbols']
         },
         'options_strategy': {
             'max_dte': st.session_state.max_dte,
@@ -82,38 +302,318 @@ def get_live_config():
         'output': st.session_state.config.get('output', {})
     }
 
-# ============================================================================
-# SIDEBAR - Configuration (Compact)
-# ============================================================================
+
+def fetch_data_with_fallback_local(symbol, config):
+    """
+    Local mode: Fetch data directly using Massive.com/Yahoo APIs.
+    Returns (formatted_results_df or None, message, yahoo_used: bool)
+    """
+    yahoo_used = False
+
+    current_price = get_stock_price_massive(symbol)
+    if current_price is None:
+        current_price = get_stock_price_yahoo(symbol)
+        yahoo_used = True
+
+    options = get_options_chain_massive(symbol, config)
+    if options.empty:
+        yahoo_chain = get_options_chain_yahoo(symbol, config)
+        if not yahoo_chain.empty:
+            options = yahoo_chain
+            yahoo_used = True
+
+    if options.empty:
+        return None, f"No options data for {symbol}", yahoo_used
+
+    options = calculate_metrics(options, current_price)
+    filtered = screen_options(options, config)
+    formatted = format_output(filtered, current_price)
+
+    if not formatted.empty:
+        return formatted, f"Found {len(formatted)} options for {symbol}", yahoo_used
+    else:
+        return None, f"No qualifying options for {symbol}", yahoo_used
+
+
+def fetch_data_via_api(symbols, config):
+    """
+    SaaS mode: Call backend API to screen options.
+    Returns (results_dict, yahoo_used, screens_remaining, error_message)
+    """
+    try:
+        payload = {
+            "symbols": symbols,
+            "max_dte": config['options_strategy']['max_dte'],
+            "min_dte": config['options_strategy']['min_dte'],
+            "min_volume": config['options_strategy']['min_volume'],
+            "min_open_interest": config['options_strategy']['min_open_interest'],
+            "min_annualized_return": config['screening_criteria']['min_annualized_return'],
+            "max_assignment_probability": config['screening_criteria']['max_assignment_probability']
+        }
+        
+        resp = requests.post(
+            f"{API_URL}/api/v1/screen",
+            json=payload,
+            headers=get_auth_headers(),
+            timeout=60
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            # Convert results back to DataFrames
+            results = {}
+            for symbol, options_list in data.get("results", {}).items():
+                if options_list:
+                    results[symbol] = pd.DataFrame(options_list)
+            return results, data.get("used_yahoo_fallback", False), data.get("screens_remaining"), None
+        
+        elif resp.status_code == 401:
+            st.session_state.auth_token = None
+            return {}, False, None, "Session expired. Please sign in again."
+        
+        elif resp.status_code == 429:
+            return {}, False, 0, "Daily limit reached. Upgrade to Pro for unlimited screens."
+        
+        else:
+            return {}, False, None, f"API error: {resp.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return {}, False, None, "Request timed out. Please try again."
+    except Exception as e:
+        return {}, False, None, f"Error: {str(e)}"
+
+
+def run_screening(symbols):
+    """Run screening for given symbols"""
+    st.session_state.processing = True
+    st.session_state.stop_processing = False
+    st.session_state.results = {}
+    st.session_state.used_yahoo = False
+
+    live_config = get_live_config()
+
+    if SAAS_MODE:
+        # SaaS mode: single API call for all symbols
+        with st.spinner(f"Screening {len(symbols)} symbols..."):
+            results, yahoo_used, remaining, error = fetch_data_via_api(symbols, live_config)
+            
+            if error:
+                st.error(error)
+            else:
+                st.session_state.results = results
+                st.session_state.used_yahoo = yahoo_used
+                st.session_state.screens_remaining = remaining
+    else:
+        # Local mode: process symbols one by one
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        total = len(symbols)
+        for i, symbol in enumerate(symbols):
+            if st.session_state.stop_processing:
+                status_text.warning("Screening stopped")
+                break
+                
+            status_text.info(f"Processing {symbol}... ({i+1}/{total})")
+            progress_bar.progress((i + 1) / total)
+
+            try:
+                result, message, yahoo_used = fetch_data_with_fallback_local(symbol, live_config)
+            except Exception as e:
+                result, message, yahoo_used = None, f"Error: {symbol} - {str(e)}", False
+
+            if yahoo_used:
+                st.session_state.used_yahoo = True
+
+            if result is not None and not result.empty:
+                st.session_state.results[symbol] = result
+
+        progress_bar.empty()
+        status_text.empty()
+
+    # Create summary if multiple results
+    if len(st.session_state.results) > 1:
+        summary_rows = []
+        for sym in st.session_state.results.keys():
+            if sym != 'Summary':
+                result = st.session_state.results[sym]
+                # Handle both DataFrame (local mode) and list of dicts (SaaS mode)
+                if isinstance(result, pd.DataFrame) and not result.empty:
+                    # Convert Series to dict for consistent handling
+                    summary_rows.append(result.iloc[0].to_dict())
+                elif isinstance(result, list) and len(result) > 0:
+                    summary_rows.append(result[0])
+        if summary_rows:
+            st.session_state.results['Summary'] = pd.DataFrame(summary_rows)
+
+    st.session_state.processing = False
+    st.rerun()
+
+
+def display_results_table(df, symbol_name, api_source=None):
+    """Display results table"""
+    # Handle both DataFrame and list of dicts
+    if isinstance(df, list):
+        if len(df) == 0:
+            st.info(f"No results for {symbol_name}")
+            return
+        df = pd.DataFrame(df)
+    elif df.empty:
+        st.info(f"No results for {symbol_name}")
+        return
+    
+    display_df = df.copy().reset_index(drop=True)
+    
+    # Column mapping (handle both API response and local DataFrame formats)
+    column_mapping = {
+        'symbol': 'Symbol',
+        'current_price': 'Price',
+        'strike': 'Strike',
+        'lastPrice': 'Premium',
+        'premium': 'Premium',
+        'volume': 'Vol',
+        'open_interest': 'OI',
+        'impliedVolatility': 'IV%',
+        'implied_volatility': 'IV%',
+        'delta': 'Delta',
+        'annualized_return': 'Return%',
+        'expiry': 'Expiry',
+        'calendar_days': 'DTE',
+        'dte': 'DTE'
+    }
+    
+    if api_source == 'massive':
+        column_mapping['theta'] = 'Decay'
+    
+    # Select and rename columns
+    display_cols = [col for col in column_mapping.keys() if col in display_df.columns]
+    display_df = display_df[display_cols]
+    display_df = display_df.rename(columns=column_mapping)
+    
+    # Remove duplicate columns after renaming
+    display_df = display_df.loc[:, ~display_df.columns.duplicated()]
+    
+    # Format columns
+    if 'Price' in display_df.columns:
+        display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "")
+    if 'Strike' in display_df.columns:
+        display_df['Strike'] = display_df['Strike'].apply(lambda x: f"${x:.0f}" if pd.notna(x) else "")
+    if 'Premium' in display_df.columns:
+        display_df['Premium'] = display_df['Premium'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "")
+    if 'Delta' in display_df.columns:
+        display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
+    if 'Decay' in display_df.columns:
+        display_df['Decay'] = display_df['Decay'].apply(lambda x: f"{x:.4f}" if pd.notna(x) else "")
+    if 'Return%' in display_df.columns:
+        display_df['Return%'] = display_df['Return%'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if 'IV%' in display_df.columns:
+        display_df['IV%'] = display_df['IV%'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if 'Vol' in display_df.columns:
+        display_df['Vol'] = display_df['Vol'].apply(lambda x: int(x) if pd.notna(x) else 0)
+    if 'OI' in display_df.columns:
+        display_df['OI'] = display_df['OI'].apply(lambda x: int(x) if pd.notna(x) else 0)
+    if 'DTE' in display_df.columns:
+        display_df['DTE'] = display_df['DTE'].apply(lambda x: int(x) if pd.notna(x) else 0)
+    
+    # Color coding for returns
+    def highlight_returns(val):
+        try:
+            num = float(str(val).replace('%', ''))
+            if num >= 50:
+                return 'background-color: #28a745; color: white; font-weight: bold'
+            elif num >= 30:
+                return 'background-color: #ffc107; color: black; font-weight: bold'
+        except:
+            pass
+        return ''
+    
+    if 'Return%' in display_df.columns:
+        styled_df = display_df.style.map(highlight_returns, subset=['Return%'])
+    else:
+        styled_df = display_df.style
+    
+    # Use auto height - no fixed height to avoid empty rows
+    st.dataframe(styled_df, width="stretch", hide_index=True)
+
+
+# =============================================================================
+# Main App Flow
+# =============================================================================
+
+# Check authentication in SaaS mode
+if SAAS_MODE and not check_auth():
+    show_login_page()
+
+# Fetch user info in SaaS mode
+if SAAS_MODE and st.session_state.auth_token and not st.session_state.user_info:
+    st.session_state.user_info = fetch_user_info()
+
+# =============================================================================
+# SIDEBAR - Configuration
+# =============================================================================
+
 with st.sidebar:
-    # Expiration & Liquidity in one row each
+    # Show user info and upgrade prompt in SaaS mode
+    if SAAS_MODE and st.session_state.user_info:
+        user = st.session_state.user_info
+        st.caption(f"👤 {user.get('email', 'User')}")
+        
+        if user.get('subscription_status') == 'free':
+            remaining = user.get('screens_remaining', 0)
+            st.caption(f"📊 {remaining} screens remaining today")
+            
+            if st.button("⭐ Upgrade to Pro", width="stretch", type="primary"):
+                # Call checkout API
+                try:
+                    resp = requests.post(
+                        f"{API_URL}/api/v1/checkout",
+                        json={
+                            "success_url": st.get_option('browser.serverAddress') + "?upgraded=true",
+                            "cancel_url": st.get_option('browser.serverAddress')
+                        },
+                        headers=get_auth_headers(),
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        checkout_url = resp.json().get("checkout_url")
+                        st.markdown(f"[Complete payment →]({checkout_url})")
+                except Exception as e:
+                    st.error(f"Failed to create checkout: {e}")
+            
+            st.divider()
+        else:
+            st.caption("⭐ Pro Member")
+            st.divider()
+    
+    # Expiration settings
     st.caption("EXPIRATION (DTE)")
     col1, col2 = st.columns(2)
     with col1:
-        min_dte = st.number_input("Min", min_value=0, max_value=364,
+        st.number_input("Min", min_value=0, max_value=364,
             value=st.session_state.config['options_strategy'].get('min_dte', 0), key='min_dte')
     with col2:
-        max_dte = st.number_input("Max", min_value=1, max_value=365,
+        st.number_input("Max", min_value=1, max_value=365,
             value=st.session_state.config['options_strategy']['max_dte'], key='max_dte')
     
+    # Liquidity settings
     st.caption("LIQUIDITY")
     col1, col2 = st.columns(2)
     with col1:
-        min_volume = st.number_input("Min Vol", min_value=0, max_value=10000,
+        st.number_input("Min Vol", min_value=0, max_value=10000,
             value=st.session_state.config['options_strategy']['min_volume'], key='min_volume')
     with col2:
-        min_oi = st.number_input("Min OI", min_value=0, max_value=10000,
+        st.number_input("Min OI", min_value=0, max_value=10000,
             value=st.session_state.config['options_strategy']['min_open_interest'], key='min_oi')
     
-    # Screening
+    # Screening settings
     st.caption("SCREENING")
     col1, col2 = st.columns(2)
     with col1:
-        min_return = st.number_input("Min Ret%", min_value=0.0, max_value=500.0,
+        st.number_input("Min Ret%", min_value=0.0, max_value=500.0,
             value=float(st.session_state.config['screening_criteria']['min_annualized_return']), 
             key='min_return', help="Minimum Annualized Return")
     with col2:
-        max_assignment_prob = st.number_input("Max Prob%", min_value=5, max_value=50,
+        st.number_input("Max Prob%", min_value=5, max_value=50,
             value=int(st.session_state.config['screening_criteria'].get('max_assignment_probability', 20)),
             key='max_assignment_prob', help="Maximum Probability of Assignment")
     
@@ -127,20 +627,40 @@ with st.sidebar:
         new_symbols = [s.strip().upper() for s in symbols_input.split(',') if s.strip()]
         if new_symbols != st.session_state.config['data']['symbols']:
             st.session_state.config['data']['symbols'] = new_symbols
-    
-    # Save button
-    if st.button("Save", use_container_width=True):
-        config_to_save = get_live_config()
-        save_config_file(config_to_save)
-        st.success("Saved!")
 
-# ============================================================================
+    # Save button
+    if st.button("Save", width="stretch"):
+        if SAAS_MODE:
+            # Save to API
+            if save_settings_to_api():
+                st.success("Settings saved!")
+            else:
+                st.error("Failed to save settings")
+        else:
+            # Save to local config file
+            config_to_save = get_live_config()
+            save_config_file(config_to_save)
+            st.success("Saved!")
+
+# =============================================================================
 # MAIN AREA
-# ============================================================================
+# =============================================================================
+
+# Show upgrade success message
+if st.query_params.get("upgraded"):
+    st.success("🎉 Welcome to Pro! You now have unlimited screens.")
+    st.query_params.clear()
 
 # Header
 st.title("Put Options Screener")
 st.caption("Discover profitable put option opportunities with real-time market data")
+
+# Show usage info for free tier in SaaS mode
+if SAAS_MODE and st.session_state.screens_remaining is not None and st.session_state.screens_remaining >= 0:
+    if st.session_state.screens_remaining == 0:
+        st.warning("⚠️ You've reached your daily limit. Upgrade to Pro for unlimited screens.")
+    elif st.session_state.screens_remaining <= 2:
+        st.info(f"📊 {st.session_state.screens_remaining} screens remaining today")
 
 # Action Row
 col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
@@ -175,92 +695,6 @@ with col4:
             st.session_state.processing = False
             st.rerun()
 
-# ============================================================================
-# Processing Functions
-# ============================================================================
-
-def fetch_data_with_fallback(symbol, config):
-    """
-    Fetch current price and options chain, using Massive.com by default
-    and automatically falling back to Yahoo Finance if needed.
-    Returns (formatted_results_df or None, message, yahoo_used: bool)
-    """
-    yahoo_used = False
-
-    # Price: try Massive first, then Yahoo
-    current_price = get_stock_price_massive(symbol)
-    if current_price is None:
-        current_price = get_stock_price_yahoo(symbol)
-        yahoo_used = True
-
-    # Options chain: try Massive first, then Yahoo
-    options = get_options_chain_massive(symbol, config)
-    if options.empty:
-        yahoo_chain = get_options_chain_yahoo(symbol, config)
-        if not yahoo_chain.empty:
-            options = yahoo_chain
-            yahoo_used = True
-
-    if options.empty:
-        return None, f"No options data for {symbol}", yahoo_used
-
-    options = calculate_metrics(options, current_price)
-    filtered = screen_options(options, config)
-    formatted = format_output(filtered, current_price)
-
-    if not formatted.empty:
-        return formatted, f"Found {len(formatted)} options for {symbol}", yahoo_used
-    else:
-        return None, f"No qualifying options for {symbol}", yahoo_used
-
-
-def run_screening(symbols):
-    """Run screening for given symbols"""
-    st.session_state.processing = True
-    st.session_state.stop_processing = False
-    st.session_state.results = {}
-    st.session_state.used_yahoo = False
-
-    # Get live config from current UI values
-    live_config = get_live_config()
-
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    total = len(symbols)
-    for i, symbol in enumerate(symbols):
-        if st.session_state.stop_processing:
-            status_text.warning("Screening stopped")
-            break
-
-        status_text.info(f"Processing {symbol}... ({i+1}/{total})")
-        progress_bar.progress((i + 1) / total)
-
-        try:
-            result, message, yahoo_used = fetch_data_with_fallback(symbol, live_config)
-        except Exception as e:
-            result, message, yahoo_used = None, f"Error: {symbol} - {str(e)}", False
-
-        if yahoo_used:
-            st.session_state.used_yahoo = True
-
-        if result is not None and not result.empty:
-            st.session_state.results[symbol] = result
-
-    # Create summary if multiple results
-    if len(st.session_state.results) > 1:
-        summary_rows = []
-        for sym in st.session_state.results.keys():
-            if sym != 'Summary':
-                summary_rows.append(st.session_state.results[sym].iloc[0])
-        if summary_rows:
-            st.session_state.results['Summary'] = pd.DataFrame(summary_rows)
-
-    progress_bar.empty()
-    status_text.empty()
-    st.session_state.processing = False
-    st.rerun()
-
 # Handle button clicks
 if screen_single and selected_symbol:
     run_screening([selected_symbol])
@@ -268,85 +702,10 @@ if screen_single and selected_symbol:
 if screen_all and st.session_state.config['data']['symbols']:
     run_screening(st.session_state.config['data']['symbols'])
 
-# ============================================================================
+# =============================================================================
 # Results Display
-# ============================================================================
+# =============================================================================
 
-def display_results_table(df, symbol_name, api_source=None):
-    """Display results table"""
-    if df.empty:
-        st.info(f"No results for {symbol_name}")
-        return
-    
-    display_df = df.copy().reset_index(drop=True)
-    
-    # Column mapping
-    column_mapping = {
-        'symbol': 'Symbol',
-        'current_price': 'Price',
-        'strike': 'Strike',
-        'lastPrice': 'Premium',
-        'volume': 'Vol',
-        'open_interest': 'OI',
-        'impliedVolatility': 'IV%',
-        'delta': 'Delta',
-        'annualized_return': 'Return%',
-        'expiry': 'Expiry',
-        'calendar_days': 'DTE'
-    }
-    
-    if api_source == 'massive':
-        column_mapping['theta'] = 'Decay'
-    
-    # Select and rename columns
-    display_cols = [col for col in column_mapping.keys() if col in display_df.columns]
-    display_df = display_df[display_cols]
-    display_df = display_df.rename(columns=column_mapping)
-    
-    # Format columns
-    if 'Price' in display_df.columns:
-        display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}")
-    if 'Strike' in display_df.columns:
-        display_df['Strike'] = display_df['Strike'].apply(lambda x: f"${x:.0f}")
-    if 'Premium' in display_df.columns:
-        display_df['Premium'] = display_df['Premium'].apply(lambda x: f"${x:.2f}")
-    if 'Delta' in display_df.columns:
-        display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.3f}")
-    if 'Decay' in display_df.columns:
-        display_df['Decay'] = display_df['Decay'].apply(lambda x: f"{x:.4f}")
-    if 'Return%' in display_df.columns:
-        display_df['Return%'] = display_df['Return%'].apply(lambda x: f"{x:.1f}%")
-    if 'IV%' in display_df.columns:
-        display_df['IV%'] = display_df['IV%'].apply(lambda x: f"{x:.1f}%")
-    if 'Vol' in display_df.columns:
-        display_df['Vol'] = display_df['Vol'].astype(int)
-    if 'OI' in display_df.columns:
-        display_df['OI'] = display_df['OI'].astype(int)
-    if 'DTE' in display_df.columns:
-        display_df['DTE'] = display_df['DTE'].astype(int)
-    
-    # Color coding for returns
-    def highlight_returns(val):
-        try:
-            num = float(val.replace('%', ''))
-            if num >= 50:
-                return 'background-color: #28a745; color: white; font-weight: bold'
-            elif num >= 30:
-                return 'background-color: #ffc107; color: black; font-weight: bold'
-        except:
-            pass
-        return ''
-    
-    if 'Return%' in display_df.columns:
-        styled_df = display_df.style.map(highlight_returns, subset=['Return%'])
-    else:
-        styled_df = display_df.style
-    
-    # Calculate height based on rows (35px per row + 38px header)
-    table_height = len(display_df) * 35 + 38
-    st.dataframe(styled_df, width="stretch", hide_index=True, height=table_height)
-
-# Show results
 if st.session_state.results:
     st.divider()
     
@@ -356,12 +715,12 @@ if st.session_state.results:
         st.subheader("Results")
     
     # Build dropdown options
-        dropdown_options = []
-        if 'Summary' in st.session_state.results:
-            dropdown_options.append("Summary")
-        for symbol in st.session_state.results.keys():
-            if symbol != 'Summary':
-                dropdown_options.append(symbol)
+    dropdown_options = []
+    if 'Summary' in st.session_state.results:
+        dropdown_options.append("Summary")
+    for symbol in st.session_state.results.keys():
+        if symbol != 'Summary':
+            dropdown_options.append(symbol)
         
     if dropdown_options:
         with col2:
@@ -376,7 +735,7 @@ if st.session_state.results:
             display_results_table(
                 st.session_state.results[selected_view],
                 selected_view,
-                'massive'  # Massive.com is the primary source for Greeks
+                'massive'
             )
 
             # Yahoo Finance fallback disclaimer
@@ -387,9 +746,26 @@ if st.session_state.results:
                 )
             
             # Show news for individual tickers (not Summary)
-            if selected_view != 'Summary' and massive_client:
+            if selected_view != 'Summary':
                 st.caption("Latest News (Last 7 Days)")
-                news_items = massive_client.get_ticker_news(selected_view, limit=10, max_age_days=7)
+                news_items = []
+                
+                if SAAS_MODE:
+                    # Fetch news from API
+                    try:
+                        resp = requests.get(
+                            f"{API_URL}/api/v1/news/{selected_view}",
+                            params={"limit": 10, "max_age_days": 7},
+                            timeout=10
+                        )
+                        if resp.status_code == 200:
+                            news_items = resp.json().get("news", [])
+                    except Exception:
+                        pass
+                elif massive_client:
+                    # Local mode - use client directly
+                    news_items = massive_client.get_ticker_news(selected_view, limit=10, max_age_days=7)
+                
                 if news_items:
                     for item in news_items:
                         date_str = f"**{item['date_display']}** - " if item.get('date_display') else ""
@@ -398,6 +774,5 @@ if st.session_state.results:
                     st.markdown("*No recent news in the last 7 days*")
 
 elif not st.session_state.processing:
-    # Empty state hint
     st.divider()
     st.info("Select a stock and click **Screen Stock** to find put options, or click **Screen All** to analyze your watchlist.")
