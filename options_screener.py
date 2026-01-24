@@ -279,8 +279,8 @@ def format_output(filtered_df, current_price=None):
         return filtered_df
     
     display_columns = [
-        'symbol', 'current_price', 'strike', 'lastPrice', 'volume', 'open_interest',
-        'impliedVolatility', 'delta', 'theta', 'annualized_return', 'expiry', 'calendar_days'
+        'symbol', 'current_price', 'strike', 'lastPrice', 'annualized_return', 'daily_decay_contract',
+        'prob_assign', 'expiry', 'calendar_days', 'volume', 'open_interest', 'impliedVolatility'
     ]
     
     formatted = filtered_df.copy()
@@ -301,8 +301,13 @@ def format_output(filtered_df, current_price=None):
     if 'annualized_return' in formatted.columns:
         formatted['annualized_return'] = formatted['annualized_return'].round(2)
     
-    if 'delta' in formatted.columns:
-        formatted['delta'] = formatted['delta'].round(3)
+    # Calculate probability of assignment: abs(delta) * 100
+    if 'delta' in filtered_df.columns:
+        formatted['prob_assign'] = (filtered_df['delta'].abs() * 100).round(1)
+    
+    # Calculate daily decay: abs(theta)
+    if 'theta' in filtered_df.columns:
+        formatted['daily_decay_contract'] = filtered_df['theta'].abs().round(4)
     
     return formatted
 

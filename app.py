@@ -597,25 +597,24 @@ def display_results_table(df, symbol_name, api_source=None):
     display_df = df.copy().reset_index(drop=True)
     
     # Column mapping (handle both API response and local DataFrame formats)
+    # Order: Symbol | Price | Strike | Premium | Return | Daily Decay | Prob Assign | Expiry | DTE | Vol | OI | IV
     column_mapping = {
         'symbol': 'Symbol',
         'current_price': 'Price',
         'strike': 'Strike',
         'lastPrice': 'Premium',
         'premium': 'Premium',
-        'volume': 'Vol',
-        'open_interest': 'OI',
-        'impliedVolatility': 'IV%',
-        'implied_volatility': 'IV%',
-        'delta': 'Delta',
-        'annualized_return': 'Return%',
+        'annualized_return': 'Return',
+        'daily_decay_contract': 'Daily Decay',
+        'prob_assign': 'Prob Assign',
         'expiry': 'Expiry',
         'calendar_days': 'DTE',
-        'dte': 'DTE'
+        'dte': 'DTE',
+        'volume': 'Vol',
+        'open_interest': 'OI',
+        'impliedVolatility': 'IV',
+        'implied_volatility': 'IV'
     }
-    
-    if api_source == 'massive':
-        column_mapping['theta'] = 'Decay'
     
     # Select and rename columns
     display_cols = [col for col in column_mapping.keys() if col in display_df.columns]
@@ -629,17 +628,18 @@ def display_results_table(df, symbol_name, api_source=None):
     if 'Price' in display_df.columns:
         display_df['Price'] = display_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "")
     if 'Strike' in display_df.columns:
-        display_df['Strike'] = display_df['Strike'].apply(lambda x: f"${x:.0f}" if pd.notna(x) else "")
+        # Use 1 decimal place to distinguish strikes like 22.0 vs 22.5
+        display_df['Strike'] = display_df['Strike'].apply(lambda x: f"${x:.1f}" if pd.notna(x) else "")
     if 'Premium' in display_df.columns:
         display_df['Premium'] = display_df['Premium'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "")
-    if 'Delta' in display_df.columns:
-        display_df['Delta'] = display_df['Delta'].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
-    if 'Decay' in display_df.columns:
-        display_df['Decay'] = display_df['Decay'].apply(lambda x: f"{x:.4f}" if pd.notna(x) else "")
-    if 'Return%' in display_df.columns:
-        display_df['Return%'] = display_df['Return%'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
-    if 'IV%' in display_df.columns:
-        display_df['IV%'] = display_df['IV%'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if 'Prob Assign' in display_df.columns:
+        display_df['Prob Assign'] = display_df['Prob Assign'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if 'Daily Decay' in display_df.columns:
+        display_df['Daily Decay'] = display_df['Daily Decay'].apply(lambda x: f"${x:.4f}" if pd.notna(x) else "")
+    if 'Return' in display_df.columns:
+        display_df['Return'] = display_df['Return'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
+    if 'IV' in display_df.columns:
+        display_df['IV'] = display_df['IV'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "")
     if 'Vol' in display_df.columns:
         display_df['Vol'] = display_df['Vol'].apply(lambda x: int(x) if pd.notna(x) else 0)
     if 'OI' in display_df.columns:
@@ -659,8 +659,8 @@ def display_results_table(df, symbol_name, api_source=None):
             pass
         return ''
     
-    if 'Return%' in display_df.columns:
-        styled_df = display_df.style.map(highlight_returns, subset=['Return%'])
+    if 'Return' in display_df.columns:
+        styled_df = display_df.style.map(highlight_returns, subset=['Return'])
     else:
         styled_df = display_df.style
     
@@ -741,18 +741,18 @@ with st.sidebar:
     st.caption("SCREENING")
     col1, col2 = st.columns(2)
     with col1:
-        st.number_input("Min Ret%", min_value=0.0, max_value=500.0,
+        st.number_input("Min Ann Ret(%)", min_value=0.0, max_value=500.0,
             value=float(st.session_state.config['screening_criteria']['min_annualized_return']), 
             key='min_return', help="Minimum Annualized Return")
     with col2:
-        st.number_input("Max Prob%", min_value=5, max_value=50,
+        st.number_input("Max Prob(%)", min_value=5, max_value=50,
             value=int(st.session_state.config['screening_criteria'].get('max_assignment_probability', 20)),
             key='max_assignment_prob', help="Maximum Probability of Assignment")
     
     # Watchlist
     st.caption("WATCHLIST")
     current_symbols_text = ", ".join(st.session_state.config['data']['symbols'])
-    symbols_input = st.text_area("Symbols", value=current_symbols_text, height=60,
+    symbols_input = st.text_area("Symbols", value=current_symbols_text, height=140,
         key='symbols_text_input', label_visibility="collapsed", placeholder="AAPL, TSLA...")
     
     if symbols_input:
@@ -814,16 +814,16 @@ with col1:
     )
 
 with col2:
-    screen_single = st.button(
-        "Screen Stock",
+    screen_all = st.button(
+        "Screen All",
         disabled=st.session_state.processing,
         width="stretch",
         type="primary"
     )
 
 with col3:
-    screen_all = st.button(
-        "Screen All",
+    screen_single = st.button(
+        "Screen Stock",
         disabled=st.session_state.processing,
         width="stretch"
     )
