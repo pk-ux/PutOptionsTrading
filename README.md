@@ -102,7 +102,6 @@ In local mode, the Streamlit app directly calls the Massive.com API for options 
 ```mermaid
 flowchart LR
     User[User Browser]
-    Clerk[Clerk Auth]
     Streamlit[Streamlit UI]
     FastAPI[FastAPI Backend]
     Postgres[(PostgreSQL)]
@@ -110,8 +109,7 @@ flowchart LR
     Yahoo[Yahoo Finance]
     Stripe[Stripe]
     
-    User --> Clerk
-    Clerk --> Streamlit
+    User -->|Email/Password| Streamlit
     Streamlit --> FastAPI
     FastAPI --> Postgres
     FastAPI --> Massive
@@ -120,18 +118,18 @@ flowchart LR
 ```
 
 In SaaS mode:
-- **Clerk** handles authentication (Google/Apple/Email sign-in)
+- **Email/Password Authentication** with JWT tokens
 - **FastAPI Backend** manages user sessions, usage limits, and API calls
-- **PostgreSQL** stores user data and subscription status
+- **PostgreSQL** stores user data, settings, and subscription status
 - **Stripe** processes subscription payments via webhooks
 
 ## Deploying as a Paid SaaS
 
 This app is ready to deploy as a paid subscription service with:
-- **Clerk**: Google/Apple/Email authentication (free up to 10K users)
+- **Email/Password Auth**: Simple, built-in authentication with JWT
 - **Stripe**: Subscription billing ($9.99/mo Pro plan)
 - **Railway**: Hosting (~$15/mo)
-- **PostgreSQL**: User management
+- **PostgreSQL**: User and settings management
 
 See **[DEPLOY.md](DEPLOY.md)** for step-by-step instructions.
 
@@ -152,10 +150,13 @@ See **[DEPLOY.md](DEPLOY.md)** for step-by-step instructions.
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/health` | GET | No | Health check |
+| `/auth/signup` | POST | No | Create new account |
+| `/auth/login` | POST | No | Login with email/password |
 | `/api/v1/me` | GET | Yes | Current user info + settings |
 | `/api/v1/settings` | GET | Yes | Get user settings |
 | `/api/v1/settings` | PUT | Yes | Update user settings |
 | `/api/v1/screen` | POST | Yes | Run screener |
+| `/api/v1/news/{symbol}` | GET | No | Get ticker news |
 | `/api/v1/checkout` | POST | Yes | Create Stripe checkout |
 | `/webhooks/stripe` | POST | No | Stripe webhook handler |
 

@@ -10,7 +10,9 @@ Provides REST API for the options screener with:
 
 import os
 import sys
-from datetime import datetime, date
+import hashlib
+import secrets
+from datetime import datetime, date, timedelta
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
@@ -80,7 +82,8 @@ class User(Base):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     clerk_user_id = Column(String(255), unique=True, nullable=False)
-    email = Column(String(255))
+    email = Column(String(255), unique=True)
+    password_hash = Column(String(255))  # For simple email/password auth
     subscription_status = Column(String(20), default="free")  # free, pro, cancelled
     stripe_customer_id = Column(String(255))
     screens_today = Column(Integer, default=0)
@@ -244,8 +247,52 @@ class UserSettingsUpdate(BaseModel):
     max_assignment_probability: Optional[int] = None
 
 
+class AuthRequest(BaseModel):
+    """Login/Signup request"""
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    """Login/Signup response"""
+    token: str
+    email: str
+    subscription_status: str
+
+
+# JWT Secret for our own tokens (fallback when Clerk not used)
+JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+
+
+def hash_password(password: str) -> str:
+    """Hash password with SHA-256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def create_jwt_token(user_id: str, email: str) -> str:
+    """Create a JWT token for the user"""
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(days=30),
+        "iat": datetime.utcnow()
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def verify_jwt_token(token: str) -> Optional[dict]:
+    """Verify and decode a JWT token"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
 # =============================================================================
-# Authentication (Clerk JWT)
+# Authentication (Clerk JWT + Simple Auth)
 # =============================================================================
 
 # Cache for Clerk JWKS
@@ -285,8 +332,8 @@ async def get_clerk_jwks():
 
 async def verify_clerk_token(authorization: str = Header(None)) -> dict:
     """
-    Verify Clerk JWT token and return user info.
-    Returns dict with 'sub' (clerk_user_id) and 'email'.
+    Verify JWT token (our own or Clerk) and return user info.
+    Returns dict with 'sub' (user_id) and 'email'.
     """
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -297,48 +344,56 @@ async def verify_clerk_token(authorization: str = Header(None)) -> dict:
     token = authorization.replace("Bearer ", "")
     
     # For development/testing without Clerk
-    if not CLERK_SECRET_KEY:
-        # Return mock user for development
+    if not CLERK_SECRET_KEY and token == "dev_token":
         return {"sub": "dev_user_123", "email": "dev@example.com"}
     
-    try:
-        jwks = await get_clerk_jwks()
-        if not jwks:
-            raise HTTPException(status_code=503, detail="Auth service unavailable")
-        
-        # Decode without verification first to get the key ID
-        unverified = jwt.decode(token, options={"verify_signature": False})
-        
-        # Find the matching key
-        header = jwt.get_unverified_header(token)
-        key_id = header.get("kid")
-        
-        rsa_key = None
-        for key in jwks.get("keys", []):
-            if key.get("kid") == key_id:
-                rsa_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
-                break
-        
-        if not rsa_key:
-            raise HTTPException(status_code=401, detail="Invalid token key")
-        
-        # Verify and decode
-        payload = jwt.decode(
-            token,
-            rsa_key,
-            algorithms=["RS256"],
-            options={"verify_aud": False}  # Clerk doesn't always set audience
-        )
-        
-        return {
-            "sub": payload.get("sub"),
-            "email": payload.get("email", payload.get("email_addresses", [{}])[0].get("email_address"))
-        }
-        
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    # First, try to verify as our own JWT token (simple email/password auth)
+    own_token = verify_jwt_token(token)
+    if own_token:
+        return {"sub": own_token.get("sub"), "email": own_token.get("email")}
+    
+    # If not our token, try Clerk JWT verification
+    if CLERK_SECRET_KEY:
+        try:
+            jwks = await get_clerk_jwks()
+            if not jwks:
+                raise HTTPException(status_code=503, detail="Auth service unavailable")
+            
+            # Decode without verification first to get the key ID
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            
+            # Find the matching key
+            header = jwt.get_unverified_header(token)
+            key_id = header.get("kid")
+            
+            rsa_key = None
+            for key in jwks.get("keys", []):
+                if key.get("kid") == key_id:
+                    rsa_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
+                    break
+            
+            if not rsa_key:
+                raise HTTPException(status_code=401, detail="Invalid token key")
+            
+            # Verify and decode
+            payload = jwt.decode(
+                token,
+                rsa_key,
+                algorithms=["RS256"],
+                options={"verify_aud": False}
+            )
+            
+            return {
+                "sub": payload.get("sub"),
+                "email": payload.get("email", payload.get("email_addresses", [{}])[0].get("email_address"))
+            }
+            
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expired")
+        except jwt.InvalidTokenError as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    
+    raise HTTPException(status_code=401, detail="Invalid token")
 
 
 def get_or_create_user(db: Session, clerk_user_id: str, email: str = None) -> User:
@@ -496,6 +551,89 @@ async def health_check():
         "database": "connected" if engine else "not configured",
         "massive_api": "configured" if MASSIVE_API_KEY else "not configured"
     }
+
+
+# =============================================================================
+# Simple Email/Password Authentication Endpoints
+# =============================================================================
+
+@app.post("/auth/signup", response_model=AuthResponse)
+async def signup(auth_req: AuthRequest, db: Session = Depends(get_db)):
+    """Create a new user account"""
+    # Check if email already exists
+    existing = db.query(User).filter(User.email == auth_req.email).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    
+    # Create new user
+    user_id = str(uuid.uuid4())
+    password_hash = hash_password(auth_req.password)
+    
+    user = User(
+        id=user_id,
+        clerk_user_id=f"email_{user_id}",  # Use email-based ID
+        email=auth_req.email,
+        password_hash=password_hash,
+        subscription_status="free",
+        screens_today=0,
+        last_screen_date=date.today()
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Create default settings from config.json
+    if DEFAULT_CONFIG:
+        symbols = ",".join(DEFAULT_CONFIG.get('data', {}).get('symbols', ['AAPL', 'MSFT', 'GOOGL', 'SPY', 'QQQ']))
+        opts = DEFAULT_CONFIG.get('options_strategy', {})
+        criteria = DEFAULT_CONFIG.get('screening_criteria', {})
+        settings = UserSettings(
+            user_id=user.id,
+            symbols=symbols,
+            max_dte=opts.get('max_dte', 45),
+            min_dte=opts.get('min_dte', 15),
+            min_volume=opts.get('min_volume', 10),
+            min_open_interest=opts.get('min_open_interest', 10),
+            min_annualized_return=criteria.get('min_annualized_return', 20.0),
+            max_assignment_probability=criteria.get('max_assignment_probability', 20)
+        )
+    else:
+        settings = UserSettings(user_id=user.id)
+    
+    db.add(settings)
+    db.commit()
+    
+    # Generate JWT token
+    token = create_jwt_token(user.id, user.email)
+    
+    return AuthResponse(
+        token=token,
+        email=user.email,
+        subscription_status=user.subscription_status
+    )
+
+
+@app.post("/auth/login", response_model=AuthResponse)
+async def login(auth_req: AuthRequest, db: Session = Depends(get_db)):
+    """Login with email and password"""
+    # Find user by email
+    user = db.query(User).filter(User.email == auth_req.email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    # Check password
+    password_hash = hash_password(auth_req.password)
+    if user.password_hash != password_hash:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    # Generate JWT token
+    token = create_jwt_token(user.id, user.email)
+    
+    return AuthResponse(
+        token=token,
+        email=user.email,
+        subscription_status=user.subscription_status
+    )
 
 
 @app.get("/api/v1/test-screen")
