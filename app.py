@@ -8,16 +8,31 @@ Supports two modes:
 2. API mode: Calls FastAPI backend (for production SaaS)
 """
 
-import streamlit as st
-import pandas as pd
-import requests
-import os
+# Early error capture - catch any import errors
 import sys
+import os
 import traceback
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Capture startup errors to display later
+_STARTUP_ERROR = None
+
+try:
+    import streamlit as st
+    import pandas as pd
+    import requests
+    from dotenv import load_dotenv
+    
+    # Load environment variables
+    load_dotenv()
+except Exception as e:
+    _STARTUP_ERROR = f"Import Error: {type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
+    # Try minimal streamlit import to show error
+    try:
+        import streamlit as st
+    except:
+        # If even streamlit fails, write to stderr and exit
+        print(f"FATAL: Cannot import streamlit: {_STARTUP_ERROR}", file=sys.stderr)
+        sys.exit(1)
 
 # =============================================================================
 # Configuration
@@ -97,6 +112,17 @@ else:
     def save_config_file(config):
         """In SaaS mode, config is per-session only"""
         pass
+
+# =============================================================================
+# Early Startup Error Check
+# =============================================================================
+
+# If there was a startup error during imports, show it immediately
+if _STARTUP_ERROR:
+    st.set_page_config(page_title="Startup Error", page_icon="⚠️")
+    st.error("Application failed to start due to an import error")
+    st.code(_STARTUP_ERROR, language="python")
+    st.stop()
 
 # =============================================================================
 # Page Configuration
