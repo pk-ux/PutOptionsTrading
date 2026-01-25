@@ -169,11 +169,136 @@ st.markdown("""
         font-weight: bold;
     }
     
+    /* =========================================
+       Modern UI Enhancements
+       ========================================= */
+    
+    /* Header styling - gradient text */
+    h1 {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 700;
+    }
+    
+    /* Table improvements - Streamlit specific selectors */
+    [data-testid="stDataFrame"] > div {
+        border-radius: 0.75rem;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Table header styling */
+    [data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] th,
+    [data-testid="stDataFrame"] thead th {
+        background-color: rgba(102, 126, 234, 0.25) !important;
+        font-weight: 600 !important;
+        color: #e0e0e0 !important;
+        border-bottom: 2px solid rgba(102, 126, 234, 0.5) !important;
+    }
+    
+    /* Alternating row colors */
+    [data-testid="stDataFrame"] tbody tr:nth-child(even) {
+        background-color: rgba(255, 255, 255, 0.02) !important;
+    }
+    [data-testid="stDataFrame"] tbody tr:nth-child(odd) {
+        background-color: rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    /* Row hover effect */
+    [data-testid="stDataFrame"] tbody tr:hover {
+        background-color: rgba(102, 126, 234, 0.15) !important;
+    }
+    
+    /* Button enhancements */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        transition: all 0.3s ease;
+    }
+    .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        transform: translateY(-1px);
+    }
+    .stButton > button[kind="secondary"] {
+        border: 1px solid rgba(102, 126, 234, 0.5);
+        transition: all 0.3s ease;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        border-color: #667eea;
+        background-color: rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Sidebar input styling */
+    section[data-testid="stSidebar"] input[type="number"],
+    section[data-testid="stSidebar"] textarea {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        transition: border-color 0.2s ease;
+    }
+    section[data-testid="stSidebar"] input[type="number"]:focus,
+    section[data-testid="stSidebar"] textarea:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+    
+    /* Section captions in sidebar */
+    section[data-testid="stSidebar"] .stCaption {
+        color: #667eea;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 1rem;
+    }
+    
+    /* News section styling */
+    .news-section {
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 0.75rem;
+        padding: 1rem 1.25rem;
+        margin-top: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .news-section h4 {
+        color: #667eea;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .news-item {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
+    .news-item:last-child {
+        border-bottom: none;
+    }
+    .news-item .date {
+        color: #667eea;
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+    .news-item a {
+        color: #a0aec0;
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+    .news-item a:hover {
+        color: #667eea;
+        text-decoration: underline;
+    }
+    
     /* Mobile responsive adjustments */
     @media (max-width: 768px) {
         .block-container {
             padding-left: 1rem;
             padding-right: 1rem;
+            padding-top: 2.5rem;  /* Extra top padding to avoid sidebar toggle overlap */
         }
         .stButton > button {
             width: 100% !important;
@@ -187,6 +312,7 @@ st.markdown("""
         }
         h1 {
             font-size: 1.5rem !important;
+            margin-top: 0.5rem;  /* Add margin to clear sidebar toggle */
         }
         input[type="number"] {
             font-size: 16px !important;
@@ -887,7 +1013,6 @@ if st.session_state.results:
             
             # Show news for individual tickers (not Summary)
             if selected_view != 'Summary':
-                st.caption("Latest News (Last 7 Days)")
                 news_items = []
                 
                 if SAAS_MODE:
@@ -906,12 +1031,18 @@ if st.session_state.results:
                     # Local mode - use client directly
                     news_items = massive_client.get_ticker_news(selected_view, limit=10, max_age_days=7)
                 
+                # Render news in styled container
+                news_html = '<div class="news-section"><h4>Latest News (Last 7 Days)</h4>'
                 if news_items:
                     for item in news_items:
-                        date_str = f"**{item['date_display']}** - " if item.get('date_display') else ""
-                        st.markdown(f"• {date_str}[{item['title']}]({item['url']})")
+                        date_str = f'<span class="date">{item["date_display"]}</span> — ' if item.get('date_display') else ""
+                        title = item.get('title', 'Untitled')
+                        url = item.get('url', '#')
+                        news_html += f'<div class="news-item">{date_str}<a href="{url}" target="_blank">{title}</a></div>'
                 else:
-                    st.markdown("*No recent news in the last 7 days*")
+                    news_html += '<div class="news-item" style="color: #666;">No recent news in the last 7 days</div>'
+                news_html += '</div>'
+                st.markdown(news_html, unsafe_allow_html=True)
 
 elif not st.session_state.processing:
     st.divider()
