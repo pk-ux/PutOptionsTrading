@@ -18,6 +18,15 @@ const DEFAULT_SETTINGS: UserSettings = {
   max_assignment_probability: 20,
 };
 
+// Screening progress state
+export interface ScreeningProgress {
+  isActive: boolean;
+  currentSymbol: string | null;
+  completedCount: number;
+  totalCount: number;
+  startTime: number | null;
+}
+
 interface AppState {
   // Settings
   settings: UserSettings;
@@ -28,6 +37,17 @@ interface AppState {
   results: Record<string, OptionResult[]>;
   setResults: (results: Record<string, OptionResult[]>) => void;
   clearResults: () => void;
+  appendResult: (symbol: string, options: OptionResult[]) => void;
+
+  // Screening progress
+  screeningProgress: ScreeningProgress | null;
+  setScreeningProgress: (progress: Partial<ScreeningProgress> | null) => void;
+  startScreening: (totalCount: number) => void;
+  updateScreeningSymbol: (symbol: string) => void;
+  incrementProgress: () => void;
+  stopScreening: () => void;
+  stopRequested: boolean;
+  requestStop: () => void;
 
   // UI state
   selectedSymbol: string;
@@ -60,6 +80,55 @@ export const useAppStore = create<AppState>()(
       results: {},
       setResults: (results) => set({ results }),
       clearResults: () => set({ results: {} }),
+      appendResult: (symbol, options) =>
+        set((state) => ({
+          results: { ...state.results, [symbol]: options },
+        })),
+
+      // Screening progress
+      screeningProgress: null,
+      setScreeningProgress: (progress) =>
+        set((state) => ({
+          screeningProgress: progress
+            ? { ...state.screeningProgress, ...progress } as ScreeningProgress
+            : null,
+        })),
+      startScreening: (totalCount) =>
+        set({
+          screeningProgress: {
+            isActive: true,
+            currentSymbol: null,
+            completedCount: 0,
+            totalCount,
+            startTime: Date.now(),
+          },
+          stopRequested: false,
+          isScreening: true,
+          results: {},
+        }),
+      updateScreeningSymbol: (symbol) =>
+        set((state) => ({
+          screeningProgress: state.screeningProgress
+            ? { ...state.screeningProgress, currentSymbol: symbol }
+            : null,
+        })),
+      incrementProgress: () =>
+        set((state) => ({
+          screeningProgress: state.screeningProgress
+            ? {
+                ...state.screeningProgress,
+                completedCount: state.screeningProgress.completedCount + 1,
+              }
+            : null,
+        })),
+      stopScreening: () =>
+        set({
+          screeningProgress: null,
+          isScreening: false,
+          stopRequested: false,
+        }),
+      stopRequested: false,
+      requestStop: () => set({ stopRequested: true }),
 
       // UI state
       selectedSymbol: DEFAULT_SETTINGS.symbols[0],

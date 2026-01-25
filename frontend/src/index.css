@@ -89,3 +89,17 @@ input:focus, textarea:focus, select:focus {
 .return-low {
   @apply text-gray-300;
 }
+
+/* Progress bar shimmer animation */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}
