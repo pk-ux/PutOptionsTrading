@@ -18,8 +18,22 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from multiple possible locations
+# Priority: backend/.env, .env (for different working directories)
+_env_paths = [
+    os.path.join(os.path.dirname(__file__), '..', 'backend', '.env'),  # From shared/
+    os.path.join(os.path.dirname(__file__), '..', '.env'),  # Root .env (legacy)
+    '.env',  # Current working directory
+]
+
+for _env_path in _env_paths:
+    _env_path = os.path.abspath(_env_path)
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+        break
+else:
+    # Fallback to default load_dotenv behavior
+    load_dotenv()
 
 
 class MassiveAPIClient:
