@@ -4,8 +4,9 @@
  */
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Save, Minus, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, Minus, Plus, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
+import { useSaveSettings } from '@/hooks/useAuthSync';
 
 interface NumberInputProps {
   label: string;
@@ -64,10 +65,11 @@ function NumberInput({ label, value, onChange, min = 0, max = 999, step = 1 }: N
 
 export function Sidebar() {
   const { settings, setSettings, sidebarOpen, toggleSidebar } = useAppStore();
+  const { saveToBackend } = useSaveSettings();
   const [symbolsText, setSymbolsText] = useState(settings.symbols.join(', '));
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Parse symbols from text
     const newSymbols = symbolsText
       .split(',')
@@ -75,8 +77,18 @@ export function Sidebar() {
       .filter((s) => s.length > 0);
     
     setSettings({ symbols: newSymbols });
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus('idle'), 2000);
+    setSaveStatus('saving');
+
+    // Save to backend
+    const success = await saveToBackend();
+    
+    if (success) {
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } else {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
   };
 
   if (!sidebarOpen) {
@@ -189,10 +201,20 @@ export function Sidebar() {
       <button
         onClick={handleSave}
         disabled={saveStatus === 'saving'}
-        className="btn-primary w-full flex items-center justify-center gap-2"
+        className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-medium transition-colors
+          ${saveStatus === 'error' 
+            ? 'bg-red-500/20 text-red-400 border border-red-500/30' 
+            : 'btn-primary'
+          }
+          disabled:opacity-50 disabled:cursor-not-allowed
+        `}
       >
-        <Save size={16} />
-        {saveStatus === 'saved' ? 'Saved!' : 'Save'}
+        {saveStatus === 'saving' ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <Save size={16} />
+        )}
+        {saveStatus === 'saved' ? 'Saved!' : saveStatus === 'error' ? 'Error saving' : 'Save'}
       </button>
     </aside>
   );

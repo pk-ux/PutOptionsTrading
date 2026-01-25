@@ -24,11 +24,32 @@ const api: AxiosInstance = axios.create({
   },
 });
 
-// Add auth token to requests (Phase 2)
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+// Token getter function - will be set by useAuthToken hook
+let getAuthToken: (() => Promise<string | null>) | null = null;
+
+export function setAuthTokenGetter(getter: () => Promise<string | null>) {
+  getAuthToken = getter;
+}
+
+// Add auth token to requests
+api.interceptors.request.use(async (config) => {
+  // Try to get token from Clerk via the getter
+  if (getAuthToken) {
+    try {
+      const token = await getAuthToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        return config;
+      }
+    } catch (e) {
+      console.error('Error getting auth token:', e);
+    }
+  }
+  
+  // Fallback to localStorage (for dev mode)
+  const localToken = localStorage.getItem('auth_token');
+  if (localToken) {
+    config.headers.Authorization = `Bearer ${localToken}`;
   }
   return config;
 });

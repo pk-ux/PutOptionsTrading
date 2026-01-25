@@ -6,8 +6,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App'
 import './index.css'
+
+// Get Clerk publishable key from environment
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,10 +22,41 @@ const queryClient = new QueryClient({
   },
 })
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+// Render app with or without Clerk based on configuration
+const AppWithProviders = () => (
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      {CLERK_PUBLISHABLE_KEY ? (
+        <ClerkProvider 
+          publishableKey={CLERK_PUBLISHABLE_KEY}
+          appearance={{
+            baseTheme: undefined,
+            variables: {
+              colorPrimary: '#8b5cf6',
+              colorBackground: '#1a1a2e',
+              colorText: '#ffffff',
+              colorInputBackground: '#16213e',
+              colorInputText: '#ffffff',
+            },
+            elements: {
+              formButtonPrimary: 'bg-primary-500 hover:bg-primary-600',
+              card: 'bg-dark-800 border border-white/10',
+              headerTitle: 'text-white',
+              headerSubtitle: 'text-gray-400',
+              socialButtonsBlockButton: 'bg-dark-700 border-white/10 text-white hover:bg-dark-600',
+              formFieldLabel: 'text-gray-300',
+              formFieldInput: 'bg-dark-700 border-white/10 text-white',
+              footerActionLink: 'text-primary-400 hover:text-primary-300',
+            },
+          }}
+        >
+          <App />
+        </ClerkProvider>
+      ) : (
+        <App />
+      )}
     </QueryClientProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 )
+
+ReactDOM.createRoot(document.getElementById('root')!).render(<AppWithProviders />)

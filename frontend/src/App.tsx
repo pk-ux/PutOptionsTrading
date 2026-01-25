@@ -4,17 +4,100 @@
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { SignIn, SignUp, useAuth } from '@clerk/clerk-react';
 import { Dashboard } from '@/pages/Dashboard';
+
+// Check if Clerk is configured
+const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+// Protected route wrapper
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  // If Clerk is not enabled, allow access (dev mode)
+  if (!CLERK_ENABLED) {
+    return <>{children}</>;
+  }
+
+  // Wait for auth to load
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-dark-900 flex items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  // Redirect to sign-in if not authenticated
+  if (!isSignedIn) {
+    return <Navigate to="/sign-in" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Auth page wrapper for consistent styling
+function AuthPageWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-dark-900 flex flex-col items-center justify-center p-4">
+      <div className="mb-8 text-center">
+        <h1 className="text-3xl font-bold gradient-text mb-2">Put Options Screener</h1>
+        <p className="text-gray-400">Discover profitable put option opportunities</p>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        {/* Future routes for Phase 2 */}
-        {/* <Route path="/sign-in" element={<SignIn />} /> */}
-        {/* <Route path="/sign-up" element={<SignUp />} /> */}
-        {/* <Route path="/settings" element={<Settings />} /> */}
+        {/* Protected main route */}
+        <Route 
+          path="/" 
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* Auth routes - only used when Clerk is enabled */}
+        <Route 
+          path="/sign-in/*" 
+          element={
+            CLERK_ENABLED ? (
+              <AuthPageWrapper>
+                <SignIn 
+                  routing="path" 
+                  path="/sign-in" 
+                  signUpUrl="/sign-up"
+                  afterSignInUrl="/"
+                />
+              </AuthPageWrapper>
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } 
+        />
+        <Route 
+          path="/sign-up/*" 
+          element={
+            CLERK_ENABLED ? (
+              <AuthPageWrapper>
+                <SignUp 
+                  routing="path" 
+                  path="/sign-up" 
+                  signInUrl="/sign-in"
+                  afterSignUpUrl="/"
+                />
+              </AuthPageWrapper>
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } 
+        />
         
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />

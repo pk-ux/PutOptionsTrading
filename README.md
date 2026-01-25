@@ -150,16 +150,17 @@ Default screening parameters (stored in `config.json`):
 
 ## Development Phases
 
-### Phase 1 (Current): MVP
+### Phase 1: MVP
 - React frontend with full UI
 - FastAPI backend with screening endpoints
 - Local development without authentication
 - Railway deployment configuration
 
-### Phase 2: Authentication
+### Phase 2 (Current): Authentication
 - Clerk integration (Google, Apple, Email/Password)
-- User settings persistence
-- Protected routes
+- User settings persistence in database
+- Protected routes with auth redirect
+- JWT token verification in backend
 
 ### Phase 3: Production
 - Stripe subscription integration
