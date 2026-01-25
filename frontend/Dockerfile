@@ -6,6 +6,14 @@ FROM node:20-alpine as builder
 
 WORKDIR /app
 
+# Build arguments for Vite (must be set at build time)
+ARG VITE_API_URL
+ARG VITE_CLERK_PUBLISHABLE_KEY
+
+# Set as environment variables for the build
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+
 # Copy package files
 COPY package*.json ./
 
@@ -15,7 +23,7 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the app
+# Build the app (Vite reads VITE_* env vars during build)
 RUN npm run build
 
 # Production stage - serve with nginx

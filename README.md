@@ -334,15 +334,17 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
    - **Root Directory**: `frontend`
    - Railway will auto-detect the Dockerfile
 
-4. Add **Environment Variables**:
+4. Add **Environment Variables** (these are used as Docker build args):
    ```
    VITE_API_URL=https://backend-xxx.up.railway.app
    VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
    ```
 
-5. Deploy and access your app!
+5. **Important**: After adding variables, trigger a **Redeploy** so the build picks up the new values
 
-> **Note:** The frontend uses a multi-stage Dockerfile with nginx. Railway's `$PORT` is automatically configured.
+6. Access your app!
+
+> **Note:** `VITE_*` variables are baked into the JavaScript at build time. If you change them, you must redeploy to rebuild the frontend.
 
 #### Step 5: Configure Custom Domain (Optional)
 
