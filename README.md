@@ -294,61 +294,88 @@ Access at http://localhost:3000
 
 Railway provides easy deployment with automatic builds and managed PostgreSQL.
 
-#### Step 1: Create Railway Account
+#### Step 1: Create Railway Project
 
-1. Go to [railway.app](https://railway.app)
-2. Sign up with GitHub
-3. Create a new project
+1. Go to [railway.app](https://railway.app) and sign up with GitHub
+2. Click **"New Project"** → **"Empty Project"**
 
-#### Step 2: Add PostgreSQL
+#### Step 2: Add PostgreSQL Database
 
-1. In your project, click **"+ New"**
-2. Select **"Database"** → **"PostgreSQL"**
-3. Wait for provisioning (takes ~30 seconds)
-4. Note the `DATABASE_URL` from the **Variables** tab
+1. In your project, click **"+ New"** → **"Database"** → **"PostgreSQL"**
+2. Wait for provisioning (~30 seconds)
+3. Click on the PostgreSQL service → **Variables** tab
+4. Copy the `DATABASE_URL` value (you'll need this for the backend)
 
 #### Step 3: Deploy Backend
 
 1. Click **"+ New"** → **"GitHub Repo"**
 2. Select your repository
-3. In **Settings**:
+3. **Configure the service:**
+   - Click on the new service → **Settings** tab
    - **Root Directory**: `backend`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Leave Build Command and Start Command EMPTY** (the Dockerfile handles this)
 
-4. Add **Environment Variables**:
-   ```
-   DATABASE_URL=<copy from PostgreSQL service>
-   MASSIVE_API_KEY=your_key
-   CLERK_SECRET_KEY=sk_live_xxx
-   CORS_ORIGINS=https://your-frontend.up.railway.app
-   ```
+4. Go to **Variables** tab and add:
 
-5. Deploy and note the generated URL (e.g., `https://backend-xxx.up.railway.app`)
+   | Variable | Value |
+   |----------|-------|
+   | `DATABASE_URL` | Click "Add Reference" → Select from Postgres service, OR paste `postgresql://postgres:PASSWORD@postgres.railway.internal:5432/railway` |
+   | `MASSIVE_API_KEY` | Your Massive.com API key |
+   | `CLERK_SECRET_KEY` | `sk_test_xxx` from [Clerk Dashboard](https://dashboard.clerk.com) |
+   | `CORS_ORIGINS` | `*` (or your frontend URL after Step 4) |
+
+5. Go to **Networking** tab → Click **"Generate Domain"** to get a public URL
+6. Note this URL (e.g., `https://backend-xxx.up.railway.app`)
 
 #### Step 4: Deploy Frontend
 
 1. Click **"+ New"** → **"GitHub Repo"**
-2. Select your repository again
-3. In **Settings**:
+2. Select your repository **again** (same repo, different service)
+3. **Configure the service:**
+   - Click on the new service → **Settings** tab
    - **Root Directory**: `frontend`
-   - Railway will auto-detect the Dockerfile
+   - **Leave Build Command and Start Command EMPTY** (the Dockerfile handles this)
 
-4. Add **Environment Variables** (these are used as Docker build args):
+4. Go to **Variables** tab and add:
+
+   | Variable | Value |
+   |----------|-------|
+   | `VITE_API_URL` | `https://backend-xxx.up.railway.app` (your backend URL from Step 3, **must include https://**) |
+   | `VITE_CLERK_PUBLISHABLE_KEY` | `pk_test_xxx` from [Clerk Dashboard](https://dashboard.clerk.com) |
+
+5. Go to **Networking** tab → Click **"Generate Domain"** to get a public URL
+
+6. **Update Backend CORS** (now that you have the frontend URL):
+   - Go back to Backend service → **Variables**
+   - Update `CORS_ORIGINS` to your frontend URL: `https://frontend-xxx.up.railway.app`
+   - This will trigger a backend redeploy
+
+#### Step 5: Verify Deployment
+
+1. **Test Backend Health:**
    ```
-   VITE_API_URL=https://backend-xxx.up.railway.app
-   VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx
+   https://your-backend-url.up.railway.app/health
    ```
+   Should return JSON with `"status": "healthy"`
 
-5. **Important**: After adding variables, trigger a **Redeploy** so the build picks up the new values
+2. **Test Frontend:**
+   - Visit your frontend URL
+   - Sign in with Clerk
+   - Click "Screen All" - results should appear
 
-6. Access your app!
+#### Troubleshooting Railway Deployment
 
-> **Note:** `VITE_*` variables are baked into the JavaScript at build time. If you change them, you must redeploy to rebuild the frontend.
+| Problem | Solution |
+|---------|----------|
+| Backend shows `$PORT` error | Clear custom Start Command in Settings - let Dockerfile handle it |
+| Frontend shows blank page | Check that `VITE_API_URL` includes `https://` and redeploy |
+| 502 Bad Gateway | Check backend Deploy logs for startup errors |
+| CORS errors (400/403 on OPTIONS) | Verify `CORS_ORIGINS` on backend matches frontend URL exactly (no trailing slash) |
+| Screening takes forever | Normal - Massive API is slow. Each symbol takes 5-15 seconds |
 
-#### Step 5: Configure Custom Domain (Optional)
+#### Step 6: Configure Custom Domain (Optional)
 
-1. Go to frontend service **Settings** → **Domains**
+1. Go to frontend service → **Settings** → **Networking**
 2. Click **"+ Custom Domain"**
 3. Add your domain and configure DNS as instructed
 

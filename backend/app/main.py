@@ -35,12 +35,17 @@ app = FastAPI(
 )
 
 # CORS configuration
+# Allow all origins in development, restrict in production via CORS_ORIGINS env var
+origins = settings.cors_origins_list
+print(f"CORS origins configured: {origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include API routes
