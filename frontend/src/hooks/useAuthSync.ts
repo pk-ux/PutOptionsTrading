@@ -13,8 +13,6 @@ import apiClient from '@/api/client';
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export function useAuthSync() {
-  const { setSettings } = useAppStore();
-  
   // Only use Clerk hooks if enabled
   if (!CLERK_ENABLED) {
     return { isLoading: false, syncSettings: () => {} };
