@@ -21,10 +21,8 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./local_test.db"
     
-    # Authentication (Clerk) - Optional for Phase 1
+    # Authentication (Clerk)
     CLERK_SECRET_KEY: Optional[str] = None
-    CLERK_PUBLISHABLE_KEY: Optional[str] = None
-    JWT_SECRET: Optional[str] = None
     
     # External APIs
     MASSIVE_API_KEY: Optional[str] = None
@@ -65,22 +63,16 @@ def get_settings() -> Settings:
 
 def load_default_config() -> dict:
     """Load default screening configuration from config.json"""
-    # Look for config.json in multiple locations
-    possible_paths = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.json"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "config.json"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "shared", "config.json"),
-        "config.json",
-    ]
+    # Look for config.json in backend directory
+    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config.json")
+    config_path = os.path.abspath(config_path)
     
-    for config_path in possible_paths:
-        config_path = os.path.abspath(config_path)
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"Could not load config.json from {config_path}: {e}")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Could not load config.json from {config_path}: {e}")
     
     # Return default configuration if file not found
     return {
