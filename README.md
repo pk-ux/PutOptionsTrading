@@ -332,8 +332,7 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
 2. Select your repository again
 3. In **Settings**:
    - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npx serve dist -s -l $PORT`
+   - Railway will auto-detect the Dockerfile
 
 4. Add **Environment Variables**:
    ```
@@ -342,6 +341,8 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
    ```
 
 5. Deploy and access your app!
+
+> **Note:** The frontend uses a multi-stage Dockerfile with nginx. Railway's `$PORT` is automatically configured.
 
 #### Step 5: Configure Custom Domain (Optional)
 
@@ -355,10 +356,10 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
 
 ```bash
 # Build backend
-docker build -t options-backend -f backend/Dockerfile .
+docker build -t options-backend ./backend
 
 # Build frontend
-docker build -t options-frontend -f frontend/Dockerfile ./frontend
+docker build -t options-frontend ./frontend
 ```
 
 #### Running in Production
@@ -393,6 +394,7 @@ docker run -d \
   --name options-frontend \
   --network options-network \
   -p 80:80 \
+  -e PORT=80 \
   options-frontend
 ```
 
@@ -560,8 +562,6 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 | `MASSIVE_API_KEY` | Yes | - | Massive.com API key |
 | `CORS_ORIGINS` | No | `*` | Allowed origins (comma-separated) |
 | `CLERK_SECRET_KEY` | No | - | Clerk secret key for JWT verification |
-| `STRIPE_SECRET_KEY` | No | - | Stripe secret key (Phase 3) |
-| `STRIPE_WEBHOOK_SECRET` | No | - | Stripe webhook secret (Phase 3) |
 | `DEBUG` | No | `false` | Enable debug mode |
 
 #### Frontend (`frontend/.env`)
