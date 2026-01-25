@@ -1,0 +1,50 @@
+{
+    "data": {
+        "symbols": [
+            "AVGO",
+            "TSLA",
+            "META",
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "AMZN",
+            "APP",
+            "IBIT",
+            "ETHA",
+            "PLTR",
+            "MSTR",
+            "COIN",
+            "NVDA",
+            "AMD",
+            "CRWV",
+            "CRCL",
+            "HOOD",
+            "NBIS",
+            "IREN",
+            "APLD",
+            "BMNR",
+            "RGTI",
+            "OKLO",
+            "APLD",
+            "CLSK",
+            "INOD"
+        ]
+    },
+    "options_strategy": {
+        "max_dte": 30,
+        "min_dte": 15,
+        "min_volume": 50,
+        "min_open_interest": 50
+    },
+    "screening_criteria": {
+        "min_annualized_return": 30.0,
+        "max_assignment_probability": 15
+    },
+    "output": {
+        "sort_by": [
+            "annualized_return"
+        ],
+        "sort_order": "descending",
+        "max_results": 50
+    }
+}

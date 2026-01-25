@@ -1,5 +1,7 @@
 # Environment
 .env
+.env.local
+.env.*.local
 
 # Python cache and compiled files
 __pycache__/
@@ -10,14 +12,29 @@ __pycache__/
 *.egg-info/
 .eggs/
 *.egg
+.venv/
+venv/
 
 # Build artifacts
 build/
 dist/
 *.log
 
-# Streamlit 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Database
+*.db
+*.sqlite3
+
+# Streamlit (deprecated)
 .streamlit/
+
+# IDE
+.vscode/
+.idea/
 
 # OS
 .DS_Store
+Thumbs.db

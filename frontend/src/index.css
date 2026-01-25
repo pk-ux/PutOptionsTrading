@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+body {
+  @apply bg-dark-950 text-gray-100 antialiased;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-primary-500 to-secondary-500 bg-clip-text text-transparent;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-dark-900;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-dark-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-dark-600;
+}
+
+/* Input focus styles */
+input:focus, textarea:focus, select:focus {
+  @apply outline-none ring-2 ring-primary-500/50;
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-gradient-to-r from-primary-500 to-secondary-500 text-white font-medium py-2 px-4 rounded-lg 
+         shadow-lg shadow-primary-500/30 transition-all duration-200 
+         hover:shadow-xl hover:shadow-primary-500/40 hover:-translate-y-0.5
+         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0;
+}
+
+.btn-secondary {
+  @apply border border-primary-500/50 text-gray-100 font-medium py-2 px-4 rounded-lg 
+         transition-all duration-200 
+         hover:border-primary-500 hover:bg-primary-500/10
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+/* Card styles */
+.card {
+  @apply bg-dark-900/50 rounded-xl border border-white/5 p-4;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full border-collapse;
+}
+
+.data-table th {
+  @apply bg-primary-500/20 text-gray-200 font-semibold text-left px-4 py-3 border-b-2 border-primary-500/30;
+}
+
+.data-table td {
+  @apply px-4 py-3 border-b border-white/5;
+}
+
+.data-table tr:nth-child(even) {
+  @apply bg-white/[0.02];
+}
+
+.data-table tr:hover {
+  @apply bg-primary-500/10;
+}
+
+/* Return color classes */
+.return-high {
+  @apply bg-green-600 text-white font-bold px-2 py-1 rounded;
+}
+
+.return-medium {
+  @apply bg-yellow-500 text-black font-bold px-2 py-1 rounded;
+}
+
+.return-low {
+  @apply text-gray-300;
+}
