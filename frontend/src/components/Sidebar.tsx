@@ -83,7 +83,8 @@ export function Sidebar() {
     return (
       <button
         onClick={toggleSidebar}
-        className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-dark-800 p-2 rounded-r-lg border border-l-0 border-white/10 hover:bg-dark-700"
+        className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-dark-800 p-2.5 rounded-r-lg border border-l-0 border-white/10 hover:bg-dark-700 transition-colors text-gray-400 hover:text-white shadow-lg"
+        title="Open sidebar"
       >
         <ChevronRight size={20} />
       </button>
@@ -91,13 +92,14 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-72 bg-dark-900 border-r border-white/5 p-4 flex flex-col gap-4 overflow-y-auto">
-      {/* Collapse button */}
+    <aside className="w-72 bg-dark-900 border-r border-white/5 p-4 flex flex-col gap-4 overflow-y-auto relative">
+      {/* Collapse button - always visible */}
       <button
         onClick={toggleSidebar}
-        className="absolute top-4 right-4 p-1 hover:bg-dark-800 rounded lg:hidden"
+        className="absolute top-4 right-2 p-1.5 hover:bg-dark-800 rounded-lg transition-colors text-gray-400 hover:text-white"
+        title="Collapse sidebar"
       >
-        <ChevronLeft size={20} />
+        <ChevronLeft size={18} />
       </button>
 
       {/* Expiration DTE */}

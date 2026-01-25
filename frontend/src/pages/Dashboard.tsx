@@ -4,7 +4,7 @@
  */
 
 import { useCallback } from 'react';
-import { Play, Loader2, ChevronDown } from 'lucide-react';
+import { Play, Loader2, ChevronDown, Menu } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import apiClient from '@/api/client';
 import { Sidebar } from '@/components/Sidebar';
@@ -27,6 +27,7 @@ export function Dashboard() {
     usedYahooFallback,
     setUsedYahooFallback,
     sidebarOpen,
+    toggleSidebar,
     screeningProgress,
     startScreening,
     updateScreeningSymbol,
@@ -170,12 +171,26 @@ export function Dashboard() {
       <main className="flex-1 overflow-y-auto p-6">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold gradient-text mb-2">
-            Put Options Screener
-          </h1>
-          <p className="text-gray-400">
-            Discover profitable put option opportunities with real-time market data
-          </p>
+          <div className="flex items-start gap-3">
+            {/* Sidebar toggle button */}
+            {!sidebarOpen && (
+              <button
+                onClick={toggleSidebar}
+                className="p-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white mt-1"
+                title="Open settings"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <div>
+              <h1 className="text-3xl font-bold gradient-text mb-2">
+                Put Options Screener
+              </h1>
+              <p className="text-gray-400">
+                Discover profitable put option opportunities with real-time market data
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Action row */}
