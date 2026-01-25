@@ -16,24 +16,8 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
-from dotenv import load_dotenv
 
-# Load environment variables from multiple possible locations
-# Priority: backend/.env, .env (for different working directories)
-_env_paths = [
-    os.path.join(os.path.dirname(__file__), '..', 'backend', '.env'),  # From shared/
-    os.path.join(os.path.dirname(__file__), '..', '.env'),  # Root .env (legacy)
-    '.env',  # Current working directory
-]
-
-for _env_path in _env_paths:
-    _env_path = os.path.abspath(_env_path)
-    if os.path.exists(_env_path):
-        load_dotenv(_env_path)
-        break
-else:
-    # Fallback to default load_dotenv behavior
-    load_dotenv()
+from ..core.config import get_settings
 
 
 class MassiveAPIClient:
@@ -50,12 +34,13 @@ class MassiveAPIClient:
     """
     
     def __init__(self):
-        self.api_key = os.getenv('MASSIVE_API_KEY')
+        settings = get_settings()
+        self.api_key = settings.MASSIVE_API_KEY
         
         if not self.api_key:
             raise ValueError(
                 "MASSIVE_API_KEY not found in environment variables. "
-                "Please set it in your .env file."
+                "Please set it in your backend/.env file."
             )
         
         # Import and initialize the Massive REST client
@@ -330,8 +315,15 @@ class MassiveAPIClient:
 
 
 # Global instance for easy import
-try:
-    massive_client = MassiveAPIClient()
-except Exception as e:
-    print(f"Failed to initialize Massive.com API client: {str(e)}")
-    massive_client = None
+massive_client: Optional[MassiveAPIClient] = None
+
+def get_massive_client() -> Optional[MassiveAPIClient]:
+    """Get or create the Massive API client singleton."""
+    global massive_client
+    if massive_client is None:
+        try:
+            massive_client = MassiveAPIClient()
+        except Exception as e:
+            print(f"Failed to initialize Massive.com API client: {str(e)}")
+            massive_client = None
+    return massive_client

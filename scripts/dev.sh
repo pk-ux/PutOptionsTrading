@@ -24,16 +24,15 @@ if [ -d ".venv" ]; then
     echo -e "${GREEN}Virtual environment activated${NC}"
 fi
 
-# Load environment variables
-if [ -f ".env" ]; then
-    export $(cat .env | grep -v '^#' | xargs)
-    echo -e "${GREEN}Loaded .env file${NC}"
+# Load environment variables from backend/.env
+if [ -f "backend/.env" ]; then
+    export $(cat backend/.env | grep -v '^#' | xargs)
+    echo -e "${GREEN}Loaded backend/.env file${NC}"
 fi
 
 # Set development environment
-export DATABASE_URL="${DATABASE_URL:-sqlite:///./backend/local_test.db}"
+export DATABASE_URL="${DATABASE_URL:-sqlite:///./local_test.db}"
 export CORS_ORIGINS="http://localhost:3000,http://localhost:5173"
-export PYTHONPATH="$PROJECT_DIR:$PROJECT_DIR/shared"
 
 echo ""
 echo -e "${YELLOW}Starting backend...${NC}"

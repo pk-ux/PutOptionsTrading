@@ -26,8 +26,8 @@ services:
   # FastAPI backend
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: options-backend
     ports:
       - "8000:8000"
@@ -38,9 +38,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./shared:/app/shared:ro
-      - ./config.json:/app/config.json:ro
 
   # React frontend (development)
   frontend:

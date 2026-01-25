@@ -10,22 +10,14 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy shared modules first
-COPY shared/ /app/shared/
-
-# Copy backend requirements and install
-COPY backend/requirements.txt .
+# Copy requirements and install
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
-COPY backend/app/ /app/app/
-
-# Copy config files
-COPY config.json /app/
-COPY shared/config.json /app/shared/
+COPY app/ /app/app/
 
 # Set environment variables
-ENV PYTHONPATH=/app:/app/shared
 ENV PYTHONUNBUFFERED=1
 
 # Expose port

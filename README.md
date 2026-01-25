@@ -181,23 +181,19 @@ PutOptionsTrading/
 │   │   │   ├── screen.py       # Request/response schemas
 │   │   │   └── user.py         # User schemas
 │   │   ├── services/
-│   │   │   ├── screener.py     # Options screening logic
-│   │   │   └── user.py         # User management
+│   │   │   ├── screener.py           # Options screening orchestration
+│   │   │   ├── options_screener.py   # Core screening logic
+│   │   │   ├── massive_api_client.py # Massive.com API client
+│   │   │   └── user.py               # User management
 │   │   └── main.py             # FastAPI app entry point
 │   ├── Dockerfile              # Production container
 │   └── requirements.txt        # Python dependencies
-│
-├── shared/                      # Shared Python modules
-│   ├── options_screener.py     # Core screening logic
-│   ├── massive_api_client.py   # Massive.com API client
-│   └── config.json             # Default configuration
 │
 ├── scripts/
 │   └── dev.sh                  # Local development script
 │
 ├── docker-compose.yml          # Local dev with PostgreSQL
-├── railway.toml                # Railway deployment config
-└── config.json                 # Default screening config
+└── railway.toml                # Railway deployment config
 ```
 
 ---
@@ -260,7 +256,7 @@ cp .env.example .env
 Terminal 1 - Backend:
 ```bash
 cd backend
-PYTHONPATH=../shared uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 ```
 
 Terminal 2 - Frontend:
