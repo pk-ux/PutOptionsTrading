@@ -317,6 +317,27 @@ st.markdown("""
         input[type="number"] {
             font-size: 16px !important;
         }
+        
+        /* Table horizontal scroll with visual indicator */
+        [data-testid="stDataFrame"] > div {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;  /* Smooth scrolling on iOS */
+        }
+        
+        /* Fade gradient on right edge to indicate more content */
+        [data-testid="stDataFrame"] {
+            position: relative;
+        }
+        [data-testid="stDataFrame"]::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 30px;
+            height: 100%;
+            background: linear-gradient(to right, transparent, rgba(17, 17, 17, 0.8));
+            pointer-events: none;
+        }
     }
     
     /* Tablet adjustments */
