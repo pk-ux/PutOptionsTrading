@@ -27,11 +27,17 @@ async def screen_options(
     """
     Screen options based on criteria.
     
-    In Phase 1 (dev mode), this works without authentication.
-    In Phase 2+, it will enforce usage limits for free tier users.
+    In Phase 1/2 (dev mode), this works without usage limits.
+    In Phase 3 (with Stripe), it will enforce usage limits for free tier users.
     """
-    # Check symbol limits if user is authenticated
-    if user:
+    screens_remaining = None
+    
+    # Only enforce limits if Stripe is configured (Phase 3)
+    # Until then, allow unlimited usage for development
+    enforce_limits = bool(settings.STRIPE_SECRET_KEY)
+    
+    # Check symbol limits if user is authenticated and limits are enforced
+    if user and enforce_limits:
         max_symbols = settings.PRO_MAX_SYMBOLS if user.subscription_status == "pro" else settings.FREE_MAX_SYMBOLS
         if len(request.symbols) > max_symbols:
             raise HTTPException(
@@ -46,8 +52,6 @@ async def screen_options(
                 status_code=429,
                 detail="Daily limit reached. Upgrade to Pro for unlimited screens."
             )
-    else:
-        screens_remaining = None
     
     # Perform screening
     results, used_yahoo = screen_symbols(
