@@ -16,6 +16,8 @@ Interactive web application that scans put option chains for a list of stocks, c
 - **Settings persistence**: Your watchlist and filters are saved to your account
 - **Real-time progress**: See each symbol being screened with live progress bar
 - **Responsive UI**: Works on desktop and mobile browsers
+- **PWA Support**: Install as an app on iOS/Android home screen
+- **Caching**: Redis/in-memory caching for faster repeated queries
 - **Real-time news**: Latest news headlines for screened tickers
 - **Configurable filters**: DTE, volume, open interest, return %, assignment probability
 
@@ -103,14 +105,18 @@ sequenceDiagram
 flowchart LR
     A[User clicks Screen] --> B[Frontend sends symbols]
     B --> C[Backend receives request]
-    C --> D[Fetch from Massive.com]
+    C --> CA{Cache hit?}
+    CA -->|Yes| CB[Return cached data]
+    CA -->|No| D[Fetch from Massive.com]
     D --> E{Has Greeks?}
     E -->|Yes| F[Use Massive data]
     E -->|No| G[Yahoo Finance fallback]
     G --> H[Calculate Greeks via Black-Scholes]
     F --> I[Apply screening filters]
     H --> I
-    I --> J[Return filtered results]
+    I --> CC[Cache results]
+    CC --> J[Return filtered results]
+    CB --> J
     J --> K[Display in results table]
 ```
 
@@ -129,6 +135,7 @@ flowchart LR
 | Authentication | Clerk | User auth (OAuth + Email) |
 | Options Data | Massive.com | Professional Greeks |
 | Fallback Data | Yahoo Finance | Free options data |
+| Caching | Redis / In-Memory | Performance optimization |
 
 ---
 
@@ -172,6 +179,7 @@ PutOptionsTrading/
 │   │   │   ├── screen.py       # Screening endpoints
 │   │   │   └── settings.py     # User settings endpoints
 │   │   ├── core/
+│   │   │   ├── cache.py        # Redis/in-memory caching
 │   │   │   ├── config.py       # Settings from env vars
 │   │   │   ├── database.py     # SQLAlchemy setup
 │   │   │   └── deps.py         # FastAPI dependencies
@@ -306,6 +314,17 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
 3. Click on the PostgreSQL service → **Variables** tab
 4. Copy the `DATABASE_URL` value (you'll need this for the backend)
 
+#### Step 2b: Add Redis Cache (Optional but Recommended)
+
+Redis caching significantly improves performance by reducing external API calls.
+
+1. In your project, click **"+ New"** → **"Database"** → **"Redis"**
+2. Wait for provisioning (~30 seconds)
+3. Click on the Redis service → **Variables** tab
+4. Note the `REDIS_URL` value (you'll add this to the backend)
+
+**Alternative:** Use [Upstash](https://upstash.com) for serverless Redis with a generous free tier (10K commands/day).
+
 #### Step 3: Deploy Backend
 
 1. Click **"+ New"** → **"GitHub Repo"**
@@ -323,6 +342,7 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
    | `MASSIVE_API_KEY` | Your Massive.com API key |
    | `CLERK_SECRET_KEY` | `sk_test_xxx` from [Clerk Dashboard](https://dashboard.clerk.com) |
    | `CORS_ORIGINS` | `*` (or your frontend URL after Step 4) |
+   | `REDIS_URL` | (Optional) Click "Add Reference" → Select from Redis service |
 
 5. Go to **Networking** tab → Click **"Generate Domain"** to get a public URL
 6. Note this URL (e.g., `https://backend-xxx.up.railway.app`)
@@ -371,7 +391,8 @@ Railway provides easy deployment with automatic builds and managed PostgreSQL.
 | Frontend shows blank page | Check that `VITE_API_URL` includes `https://` and redeploy |
 | 502 Bad Gateway | Check backend Deploy logs for startup errors |
 | CORS errors (400/403 on OPTIONS) | Verify `CORS_ORIGINS` on backend matches frontend URL exactly (no trailing slash) |
-| Screening takes forever | Normal - Massive API is slow. Each symbol takes 5-15 seconds |
+| Screening takes forever | Add Redis for caching. First run is slow, subsequent runs are fast |
+| Cache not working | Ensure `REDIS_URL` is set and Redis service is running |
 
 #### Step 6: Configure Custom Domain (Optional)
 
@@ -591,6 +612,8 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 | `MASSIVE_API_KEY` | Yes | - | Massive.com API key |
 | `CORS_ORIGINS` | No | `*` | Allowed origins (comma-separated) |
 | `CLERK_SECRET_KEY` | No | - | Clerk secret key for JWT verification |
+| `REDIS_URL` | No | - | Redis URL for caching (falls back to in-memory) |
+| `CACHE_DISABLED` | No | `false` | Set to `true` to disable caching entirely |
 | `DEBUG` | No | `false` | Enable debug mode |
 
 #### Frontend (`frontend/.env`)
@@ -599,6 +622,22 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 |----------|----------|---------|-------------|
 | `VITE_API_URL` | No | `""` (same origin) | Backend API URL |
 | `VITE_CLERK_PUBLISHABLE_KEY` | No | - | Clerk publishable key |
+
+### Caching
+
+The backend uses caching to reduce external API calls and improve response times.
+
+| Data Type | TTL | Description |
+|-----------|-----|-------------|
+| Stock prices | 3 minutes | From Yahoo Finance |
+| Options chains | 5 minutes | From Massive.com (already 15-min delayed) |
+| News | 15 minutes | From Massive.com |
+
+**Cache Backends:**
+- **Redis** (recommended for production): Set `REDIS_URL` environment variable
+- **In-Memory** (default for local dev): Used when `REDIS_URL` is not set
+
+**Disabling Cache:** Set `CACHE_DISABLED=true` to bypass all caching (useful for debugging).
 
 ### Screening Parameters
 

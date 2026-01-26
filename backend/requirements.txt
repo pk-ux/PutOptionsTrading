@@ -34,3 +34,9 @@ scipy>=1.10.0
 # Financial data APIs
 yfinance>=0.2.28
 massive>=2.0.0
+
+# Caching
+redis>=5.0.0
+
+# Rate limiting
+slowapi>=0.1.9
