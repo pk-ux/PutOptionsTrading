@@ -12,6 +12,7 @@ import { ResultsTable } from '@/components/ResultsTable';
 import { NewsSection } from '@/components/NewsSection';
 import { ScreeningProgress } from '@/components/ScreeningProgress';
 import { UserMenu } from '@/components/UserMenu';
+import { InstallPrompt } from '@/components/InstallPrompt';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { OptionResult } from '@/types';
 
@@ -314,6 +315,9 @@ export function Dashboard() {
         ) : null}
 
       </main>
+
+      {/* PWA Install Prompt */}
+      <InstallPrompt />
     </div>
   );
 }
