@@ -64,22 +64,36 @@ function NumberInput({ label, value, onChange, min = 0, max = 999, step = 1 }: N
 }
 
 export function Sidebar() {
-  const { settings, setSettings, sidebarOpen, toggleSidebar } = useAppStore();
+  const { settings, setSettings, sidebarOpen, toggleSidebar, setSelectedSymbol } = useAppStore();
   const { saveToBackend } = useSaveSettings();
-  const [symbolsText, setSymbolsText] = useState(settings.symbols.join(', '));
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  const handleSave = async () => {
+  // Convert symbols array to comma-separated text for display
+  const symbolsText = settings.symbols.join(', ');
+
+  // Handle watchlist text changes - parse and update immediately
+  const handleSymbolsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
     // Parse symbols from text
-    const newSymbols = symbolsText
+    const newSymbols = text
       .split(',')
       .map((s) => s.trim().toUpperCase())
       .filter((s) => s.length > 0);
     
+    // Update settings immediately
     setSettings({ symbols: newSymbols });
+    
+    // Update selected symbol if current one is no longer in list
+    if (newSymbols.length > 0 && !newSymbols.includes(settings.symbols[0])) {
+      setSelectedSymbol(newSymbols[0]);
+    }
+  };
+
+  // Save to backend (for persistence across sessions)
+  const handleSave = async () => {
     setSaveStatus('saving');
 
-    // Save to backend
+    // Save current settings to backend
     const success = await saveToBackend();
     
     if (success) {
@@ -191,10 +205,13 @@ export function Sidebar() {
         </p>
         <textarea
           value={symbolsText}
-          onChange={(e) => setSymbolsText(e.target.value)}
+          onChange={handleSymbolsChange}
           placeholder="AAPL, TSLA, MSFT..."
           className="w-full h-40 bg-dark-800 border border-white/10 rounded-lg p-3 text-sm resize-none focus:border-primary-500"
         />
+        <p className="text-xs text-gray-500 mt-1">
+          Changes apply immediately. Click Save to persist.
+        </p>
       </div>
 
       {/* Save button */}
