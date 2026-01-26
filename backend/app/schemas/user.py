@@ -6,16 +6,51 @@ User-related Pydantic schemas
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 
+from ..core.config import DEFAULT_CONFIG
+
+
+def _get_default_symbols() -> List[str]:
+    """Get default symbols from config.json"""
+    return DEFAULT_CONFIG.get("data", {}).get("symbols", ["AAPL", "MSFT", "GOOGL", "SPY", "QQQ"])
+
+
+def _get_option_default(key: str, fallback: int) -> int:
+    """Get default option strategy value from config.json"""
+    return DEFAULT_CONFIG.get("options_strategy", {}).get(key, fallback)
+
+
+def _get_screening_default(key: str, fallback) -> float:
+    """Get default screening criteria value from config.json"""
+    return DEFAULT_CONFIG.get("screening_criteria", {}).get(key, fallback)
+
 
 class UserSettingsSchema(BaseModel):
-    """User settings schema"""
-    symbols: List[str] = ["AAPL", "MSFT", "GOOGL", "SPY", "QQQ"]
-    max_dte: int = 45
-    min_dte: int = 15
-    min_volume: int = 10
-    min_open_interest: int = 10
-    min_annualized_return: float = 20.0
-    max_assignment_probability: int = 20
+    """User settings schema - defaults loaded from config.json"""
+    symbols: List[str] = None  # type: ignore
+    max_dte: int = None  # type: ignore
+    min_dte: int = None  # type: ignore
+    min_volume: int = None  # type: ignore
+    min_open_interest: int = None  # type: ignore
+    min_annualized_return: float = None  # type: ignore
+    max_assignment_probability: int = None  # type: ignore
+    
+    def __init__(self, **data):
+        # Set defaults from config.json if not provided
+        if data.get("symbols") is None:
+            data["symbols"] = _get_default_symbols()
+        if data.get("max_dte") is None:
+            data["max_dte"] = _get_option_default("max_dte", 45)
+        if data.get("min_dte") is None:
+            data["min_dte"] = _get_option_default("min_dte", 15)
+        if data.get("min_volume") is None:
+            data["min_volume"] = _get_option_default("min_volume", 10)
+        if data.get("min_open_interest") is None:
+            data["min_open_interest"] = _get_option_default("min_open_interest", 10)
+        if data.get("min_annualized_return") is None:
+            data["min_annualized_return"] = _get_screening_default("min_annualized_return", 20.0)
+        if data.get("max_assignment_probability") is None:
+            data["max_assignment_probability"] = int(_get_screening_default("max_assignment_probability", 20))
+        super().__init__(**data)
     
     class Config:
         from_attributes = True

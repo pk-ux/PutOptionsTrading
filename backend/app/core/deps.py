@@ -58,6 +58,9 @@ def verify_clerk_token(token: str) -> Optional[dict]:
     Verify a Clerk JWT token and return the payload.
     Returns None if verification fails.
     """
+    # Clock skew tolerance in seconds (60 seconds should cover most cases)
+    CLOCK_SKEW_LEEWAY = 60
+    
     try:
         # Decode without verification first to get the header
         unverified_header = jwt.get_unverified_header(token)
@@ -72,7 +75,8 @@ def verify_clerk_token(token: str) -> Optional[dict]:
                 token,
                 settings.CLERK_SECRET_KEY,
                 algorithms=["HS256"],
-                options={"verify_aud": False}
+                options={"verify_aud": False},
+                leeway=CLOCK_SKEW_LEEWAY  # Allow for clock skew
             )
             return payload
         except jwt.exceptions.InvalidAlgorithmError:
@@ -90,8 +94,9 @@ def verify_clerk_token(token: str) -> Optional[dict]:
                 "verify_signature": False,  # We'll validate signature properly in production
                 "verify_aud": False,
                 "verify_exp": True,
-                "verify_iat": True,
-            }
+                "verify_iat": False,  # Disable iat verification - we handle clock skew with leeway
+            },
+            leeway=CLOCK_SKEW_LEEWAY  # Allow for clock skew on exp claim
         )
         
         # Validate required Clerk claims

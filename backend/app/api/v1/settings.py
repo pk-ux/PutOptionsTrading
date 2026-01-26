@@ -43,9 +43,12 @@ async def get_settings(
 ):
     """Get current user's settings"""
     if not user.settings:
+        print(f"[Settings] User {user.id} has no settings, returning defaults")
         return UserSettingsSchema()
     
-    return UserSettingsSchema(**user.settings.to_dict())
+    settings_dict = user.settings.to_dict()
+    print(f"[Settings] Returning settings for user {user.id}: symbols={settings_dict.get('symbols')}, max_prob={settings_dict.get('max_assignment_probability')}")
+    return UserSettingsSchema(**settings_dict)
 
 
 @router.put("/settings", response_model=UserSettingsSchema)
@@ -55,6 +58,8 @@ async def update_settings(
     db: Session = Depends(get_db)
 ):
     """Update current user's settings"""
+    print(f"[Settings] PUT request from user {user.id}: {settings_update}")
+    
     if not user.settings:
         raise HTTPException(status_code=404, detail="User settings not found")
     
@@ -63,6 +68,7 @@ async def update_settings(
     # Update only provided fields
     if settings_update.symbols is not None:
         settings.symbols = ",".join(settings_update.symbols)
+        print(f"[Settings] Updated symbols to: {settings.symbols}")
     if settings_update.max_dte is not None:
         settings.max_dte = settings_update.max_dte
     if settings_update.min_dte is not None:
@@ -79,4 +85,6 @@ async def update_settings(
     db.commit()
     db.refresh(user)
     
-    return UserSettingsSchema(**user.settings.to_dict())
+    result = UserSettingsSchema(**user.settings.to_dict())
+    print(f"[Settings] Saved and returning: symbols={result.symbols}, max_prob={result.max_assignment_probability}")
+    return result

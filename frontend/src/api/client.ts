@@ -33,23 +33,33 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
 
 // Add auth token to requests
 api.interceptors.request.use(async (config) => {
+  const requestUrl = config.url || '';
+  
   // Try to get token from Clerk via the getter
   if (getAuthToken) {
     try {
       const token = await getAuthToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        console.log(`[API] Request to ${requestUrl} with Clerk token`);
         return config;
+      } else {
+        console.log(`[API] Request to ${requestUrl} - token getter returned null`);
       }
     } catch (e) {
-      console.error('Error getting auth token:', e);
+      console.error('[API] Error getting auth token:', e);
     }
+  } else {
+    console.log(`[API] Request to ${requestUrl} - no token getter set`);
   }
   
   // Fallback to localStorage (for dev mode)
   const localToken = localStorage.getItem('auth_token');
   if (localToken) {
     config.headers.Authorization = `Bearer ${localToken}`;
+    console.log(`[API] Request to ${requestUrl} with localStorage token`);
+  } else {
+    console.log(`[API] Request to ${requestUrl} without auth token`);
   }
   return config;
 });

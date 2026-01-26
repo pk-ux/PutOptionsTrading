@@ -7,9 +7,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { UserSettings, OptionResult } from '@/types';
 
-// Default settings matching config.json
+// Default settings matching backend/config.json
 const DEFAULT_SETTINGS: UserSettings = {
-  symbols: ['AAPL', 'MSFT', 'GOOGL', 'SPY', 'QQQ'],
+  symbols: ['AAPL', 'MSFT', 'GOOGL', 'SPY', 'QQQ', 'TSLA', 'APP', 'IBIT', 'PLTR', 'AVGO', 'MSTR', 'COIN', 'SVXY', 'NVDA', 'AMD', 'INTC', 'META'],
   max_dte: 45,
   min_dte: 15,
   min_volume: 10,
@@ -31,6 +31,7 @@ interface AppState {
   // Settings
   settings: UserSettings;
   setSettings: (settings: Partial<UserSettings>) => void;
+  replaceSettings: (settings: UserSettings) => void;
   resetSettings: () => void;
 
   // Screening results
@@ -74,6 +75,8 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           settings: { ...state.settings, ...newSettings },
         })),
+      replaceSettings: (newSettings) =>
+        set({ settings: newSettings }),
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
 
       // Results
@@ -147,8 +150,9 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'put-options-screener',
+      // Only persist UI preferences, NOT settings
+      // Settings come from backend for logged-in users, DEFAULT_SETTINGS for logged-out
       partialize: (state) => ({
-        settings: state.settings,
         sidebarOpen: state.sidebarOpen,
       }),
     }
