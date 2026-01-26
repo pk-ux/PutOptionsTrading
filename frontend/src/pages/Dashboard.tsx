@@ -172,26 +172,26 @@ export function Dashboard() {
       {sidebarOpen && <Sidebar />}
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto p-6">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              {/* Sidebar toggle button */}
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* Header - responsive layout */}
+        <div className="mb-4 sm:mb-6">
+          <div className="flex items-start justify-between gap-2 sm:gap-3">
+            <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+              {/* Sidebar toggle button - larger touch target on mobile */}
               {!sidebarOpen && (
                 <button
                   onClick={toggleSidebar}
-                  className="p-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white mt-1"
+                  className="p-2.5 sm:p-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white flex-shrink-0"
                   title="Open settings"
                 >
-                  <Menu size={20} />
+                  <Menu size={22} className="sm:w-5 sm:h-5" />
                 </button>
               )}
-              <div>
-                <h1 className="text-3xl font-bold gradient-text mb-2">
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold gradient-text mb-1 sm:mb-2 truncate">
                   Put Options Screener
                 </h1>
-                <p className="text-gray-400">
+                <p className="text-gray-400 text-xs sm:text-sm hidden sm:block">
                   Discover profitable put option opportunities with real-time market data
                 </p>
               </div>
@@ -201,15 +201,15 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Action row */}
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          {/* Symbol selector */}
-          <div className="relative">
+        {/* Action row - stack on mobile, row on larger screens */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+          {/* Symbol selector - full width on mobile */}
+          <div className="relative w-full sm:w-auto">
             <select
               value={selectedSymbol}
               onChange={(e) => setSelectedSymbol(e.target.value)}
               disabled={isScreening}
-              className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-4 py-2.5 pr-10 text-sm focus:border-primary-500 min-w-[140px] disabled:opacity-50"
+              className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-4 py-3 sm:py-2.5 pr-10 text-base sm:text-sm focus:border-primary-500 w-full sm:min-w-[140px] disabled:opacity-50"
             >
               {settings.symbols.map((symbol) => (
                 <option key={symbol} value={symbol}>
@@ -218,33 +218,36 @@ export function Dashboard() {
               ))}
             </select>
             <ChevronDown
-              size={16}
+              size={18}
               className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
             />
           </div>
 
-          {/* Screen All button */}
-          <button
-            onClick={handleScreenAll}
-            disabled={isScreening || settings.symbols.length === 0}
-            className="btn-primary flex items-center gap-2"
-          >
-            {isScreening ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Play size={16} />
-            )}
-            Screen All
-          </button>
+          {/* Buttons container - side by side on mobile */}
+          <div className="flex gap-3 sm:gap-4">
+            {/* Screen All button */}
+            <button
+              onClick={handleScreenAll}
+              disabled={isScreening || settings.symbols.length === 0}
+              className="btn-primary flex items-center justify-center gap-2 flex-1 sm:flex-none py-3 sm:py-2.5 text-base sm:text-sm min-h-[48px] sm:min-h-0"
+            >
+              {isScreening ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <Play size={18} />
+              )}
+              Screen All
+            </button>
 
-          {/* Screen Single button */}
-          <button
-            onClick={handleScreenSingle}
-            disabled={isScreening || !selectedSymbol}
-            className="btn-secondary flex items-center gap-2"
-          >
-            Screen Stock
-          </button>
+            {/* Screen Single button */}
+            <button
+              onClick={handleScreenSingle}
+              disabled={isScreening || !selectedSymbol}
+              className="btn-secondary flex items-center justify-center gap-2 flex-1 sm:flex-none py-3 sm:py-2.5 text-base sm:text-sm min-h-[48px] sm:min-h-0"
+            >
+              Screen Stock
+            </button>
+          </div>
         </div>
 
         {/* Screening progress indicator */}
@@ -255,11 +258,11 @@ export function Dashboard() {
         {/* Results section */}
         {Object.keys(results).length > 0 ? (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-semibold">
                 Results
                 {isScreening && (
-                  <span className="text-sm font-normal text-gray-400 ml-2">
+                  <span className="text-xs sm:text-sm font-normal text-gray-400 ml-2">
                     (updating...)
                   </span>
                 )}
@@ -271,7 +274,7 @@ export function Dashboard() {
                   <select
                     value={selectedView}
                     onChange={(e) => setSelectedView(e.target.value)}
-                    className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-4 py-2 pr-10 text-sm focus:border-primary-500 min-w-[120px]"
+                    className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm focus:border-primary-500 min-w-[100px] sm:min-w-[120px]"
                   >
                     {viewOptions.map((option) => (
                       <option key={option} value={option}>
@@ -281,7 +284,7 @@ export function Dashboard() {
                   </select>
                   <ChevronDown
                     size={16}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
+                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
                   />
                 </div>
               )}
@@ -291,7 +294,7 @@ export function Dashboard() {
 
             {/* Yahoo fallback notice */}
             {usedYahooFallback && !isScreening && (
-              <p className="text-gray-500 text-sm mt-4">
+              <p className="text-gray-500 text-xs sm:text-sm mt-3 sm:mt-4">
                 Note: When Massive.com data was unavailable, prices or options data were retrieved from Yahoo Finance.
               </p>
             )}
@@ -302,8 +305,8 @@ export function Dashboard() {
             )}
           </>
         ) : !isScreening ? (
-          <div className="card text-center py-12">
-            <p className="text-gray-400">
+          <div className="card text-center py-8 sm:py-12 px-4">
+            <p className="text-gray-400 text-sm sm:text-base">
               Select a stock and click <strong>Screen Stock</strong> to find put options,
               or click <strong>Screen All</strong> to analyze your watchlist.
             </p>

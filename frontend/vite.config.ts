@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vitejs.dev/config/
+// PWA is enabled via manifest.json in public/ folder
+// Service worker can be added later if offline support is needed
 export default defineConfig({
   plugins: [react()],
   resolve: {
