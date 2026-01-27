@@ -311,3 +311,126 @@ async def delete_system_trade_idea(
     db.commit()
     
     return {"message": "System trade idea deleted successfully"}
+
+
+# ============== Seed System Data ==============
+
+# System Filters to seed
+SYSTEM_FILTERS = [
+    {
+        "name": "Conservative",
+        "is_default": True,
+        "min_dte": 15,
+        "max_dte": 45,
+        "min_volume": 10,
+        "min_open_interest": 10,
+        "min_annualized_return": 20.0,
+        "max_assignment_probability": 20,
+    },
+    {
+        "name": "Moderate",
+        "is_default": False,
+        "min_dte": 7,
+        "max_dte": 21,
+        "min_volume": 50,
+        "min_open_interest": 50,
+        "min_annualized_return": 30.0,
+        "max_assignment_probability": 15,
+    },
+    {
+        "name": "Aggressive",
+        "is_default": False,
+        "min_dte": 3,
+        "max_dte": 14,
+        "min_volume": 100,
+        "min_open_interest": 100,
+        "min_annualized_return": 50.0,
+        "max_assignment_probability": 10,
+    },
+]
+
+# System Trade Ideas to seed
+SYSTEM_TRADE_IDEAS = [
+    {
+        "name": "Mag 7",
+        "description": "The Magnificent Seven - largest tech companies",
+        "is_default": True,
+        "symbols": "AAPL,MSFT,GOOGL,AMZN,META,NVDA,TSLA",
+    },
+    {
+        "name": "Crypto Plays",
+        "description": "Crypto-related stocks and ETFs",
+        "is_default": False,
+        "symbols": "COIN,MSTR,IBIT,ETHA",
+    },
+    {
+        "name": "AI and Chips",
+        "description": "AI and semiconductor companies",
+        "is_default": False,
+        "symbols": "NVDA,AMD,AVGO,PLTR,CRWV",
+    },
+]
+
+
+@router.post("/seed")
+async def seed_system_data(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Seed system filters and trade ideas (admin only).
+    This is idempotent - will skip if data already exists.
+    """
+    results = {
+        "filters_created": 0,
+        "filters_skipped": False,
+        "trade_ideas_created": 0,
+        "trade_ideas_skipped": False,
+    }
+    
+    # Seed filters
+    existing_filters = db.query(Filter).filter(Filter.is_system == True).count()
+    if existing_filters > 0:
+        results["filters_skipped"] = True
+        results["filters_existing"] = existing_filters
+    else:
+        for filter_data in SYSTEM_FILTERS:
+            new_filter = Filter(
+                name=filter_data["name"],
+                is_system=True,
+                is_default=filter_data["is_default"],
+                user_id=None,
+                min_dte=filter_data["min_dte"],
+                max_dte=filter_data["max_dte"],
+                min_volume=filter_data["min_volume"],
+                min_open_interest=filter_data["min_open_interest"],
+                min_annualized_return=filter_data["min_annualized_return"],
+                max_assignment_probability=filter_data["max_assignment_probability"],
+            )
+            db.add(new_filter)
+            results["filters_created"] += 1
+    
+    # Seed trade ideas
+    existing_ideas = db.query(TradeIdea).filter(TradeIdea.is_system == True).count()
+    if existing_ideas > 0:
+        results["trade_ideas_skipped"] = True
+        results["trade_ideas_existing"] = existing_ideas
+    else:
+        for idea_data in SYSTEM_TRADE_IDEAS:
+            new_idea = TradeIdea(
+                name=idea_data["name"],
+                description=idea_data.get("description"),
+                is_system=True,
+                is_default=idea_data["is_default"],
+                user_id=None,
+                symbols=idea_data["symbols"],
+            )
+            db.add(new_idea)
+            results["trade_ideas_created"] += 1
+    
+    db.commit()
+    
+    return {
+        "message": "Seed operation complete",
+        "results": results
+    }
