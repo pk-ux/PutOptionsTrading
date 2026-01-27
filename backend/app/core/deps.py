@@ -159,35 +159,27 @@ async def get_current_user(
     Get current authenticated user.
     Raises 401 if not authenticated.
     """
-    print(f"[Auth] get_current_user called, auth header present: {authorization is not None}")
-    
     if not authorization:
-        print("[Auth] No authorization header")
         raise HTTPException(status_code=401, detail="Authorization header required")
     
     if not authorization.startswith("Bearer "):
-        print("[Auth] Invalid authorization format")
         raise HTTPException(status_code=401, detail="Invalid authorization format")
     
     token = authorization.replace("Bearer ", "")
-    print(f"[Auth] Token received (first 50 chars): {token[:50] if len(token) > 50 else token}...")
     
     # Dev mode: accept any token
     if not settings.CLERK_SECRET_KEY:
-        print("[Auth] Dev mode - accepting any token")
         user = get_or_create_user(db, "dev_user_123", "dev@example.com")
         return user
     
     # Production mode: Verify Clerk JWT
     payload = verify_clerk_token(token)
     if not payload:
-        print("[Auth] Token verification failed")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
     # Get user ID and email from Clerk token
     clerk_user_id = payload.get("sub")
     email = payload.get("email") or payload.get("primary_email_address_id")
-    print(f"[Auth] Token verified, clerk_user_id: {clerk_user_id}, email: {email}")
     
     if not clerk_user_id:
         raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
@@ -208,20 +200,15 @@ def is_admin(user: User) -> bool:
     Admin IDs are configured via ADMIN_CLERK_IDS environment variable.
     """
     if not user:
-        print(f"[Admin Check] No user provided")
         return False
     
     admin_ids = settings.admin_clerk_ids_list
-    print(f"[Admin Check] User: {user.clerk_user_id}, Admin IDs: {admin_ids}")
     
     # In dev mode, treat dev user as admin if no admin IDs configured
     if not settings.CLERK_SECRET_KEY and not admin_ids:
-        print(f"[Admin Check] Dev mode without admin IDs - granting admin")
         return True
     
-    is_admin_user = user.clerk_user_id in admin_ids
-    print(f"[Admin Check] Is admin: {is_admin_user}")
-    return is_admin_user
+    return user.clerk_user_id in admin_ids
 
 
 async def get_current_admin(
