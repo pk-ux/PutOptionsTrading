@@ -13,7 +13,11 @@ Interactive web application that scans put option chains for a list of stocks, c
 - **Professional-grade Greeks**: Delta, gamma, theta, vega directly from Massive.com API
 - **Automatic fallback**: Uses Yahoo Finance when Massive.com data is unavailable
 - **User authentication**: Sign in with Google, Apple, or email via Clerk
-- **Settings persistence**: Your watchlist and filters are saved to your account
+- **Filters and Trade Ideas**: One-click selection of reusable screening presets and curated watchlists
+- **System presets**: Admin-managed filters and trade ideas available to all users
+- **User customization**: Create up to 10 personal filters and trade ideas
+- **Admin Dashboard**: Manage system filters and trade ideas at `/admin`
+- **Auto-save**: Selections are automatically saved - no manual save button needed
 - **Real-time progress**: See each symbol being screened with live progress bar
 - **Responsive UI**: Works on desktop and mobile browsers
 - **PWA Support**: Install as an app on iOS/Android home screen
@@ -103,21 +107,47 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A[User clicks Screen] --> B[Frontend sends symbols]
-    B --> C[Backend receives request]
-    C --> CA{Cache hit?}
-    CA -->|Yes| CB[Return cached data]
-    CA -->|No| D[Fetch from Massive.com]
-    D --> E{Has Greeks?}
-    E -->|Yes| F[Use Massive data]
-    E -->|No| G[Yahoo Finance fallback]
-    G --> H[Calculate Greeks via Black-Scholes]
-    F --> I[Apply screening filters]
-    H --> I
-    I --> CC[Cache results]
-    CC --> J[Return filtered results]
-    CB --> J
-    J --> K[Display in results table]
+    A[User selects Trade Idea] --> B[Symbols update in UI]
+    B --> C[User selects Filter]
+    C --> D[User clicks Screen]
+    D --> E[Frontend sends symbols + filter params]
+    E --> F[Backend receives request]
+    F --> FA{Cache hit?}
+    FA -->|Yes| FB[Return cached data]
+    FA -->|No| G[Fetch from Massive.com]
+    G --> H{Has Greeks?}
+    H -->|Yes| I[Use Massive data]
+    H -->|No| J[Yahoo Finance fallback]
+    J --> K[Calculate Greeks via Black-Scholes]
+    I --> L[Apply screening filters]
+    K --> L
+    L --> FC[Cache results]
+    FC --> M[Return filtered results]
+    FB --> M
+    M --> N[Display in results table]
+```
+
+### User Flow (Simplified)
+
+```mermaid
+flowchart TD
+    A[User opens app] --> B[Load Filters & Trade Ideas]
+    B --> C[Auto-select defaults or saved selections]
+    C --> D{User wants to screen?}
+    D -->|Yes| E[Click Screen All]
+    D -->|No| F{Change selection?}
+    F -->|Trade Idea| G[Click Trade Idea chip]
+    G --> H[Symbols update + selection saved]
+    H --> D
+    F -->|Filter| I[Click Filter chip]
+    I --> J[Filter params update + selection saved]
+    J --> D
+    F -->|Create new| K[Click + New]
+    K --> L[Fill form & save]
+    L --> M[New item created & selected]
+    M --> D
+    E --> N[Screening runs with selected params]
+    N --> O[Results displayed]
 ```
 
 ### Technology Stack
@@ -148,14 +178,20 @@ PutOptionsTrading/
 │   │   ├── api/
 │   │   │   └── client.ts       # Axios API client with auth
 │   │   ├── components/
+│   │   │   ├── ChipSelector.tsx     # Filter/Trade Idea chip selector
+│   │   │   ├── FilterForm.tsx       # Create/edit filter form
+│   │   │   ├── Modal.tsx            # Reusable modal component
 │   │   │   ├── NewsSection.tsx      # Ticker news display
 │   │   │   ├── ResultsTable.tsx     # Options results table
 │   │   │   ├── ScreeningProgress.tsx # Progress indicator
-│   │   │   ├── Sidebar.tsx          # Settings sidebar
+│   │   │   ├── Sidebar.tsx          # Shows current selection info
+│   │   │   ├── TradeIdeaForm.tsx    # Create/edit trade idea form
 │   │   │   └── UserMenu.tsx         # User avatar/menu
 │   │   ├── hooks/
-│   │   │   └── useAuthSync.ts  # Clerk token sync
+│   │   │   ├── useAuthSync.ts       # Clerk token sync
+│   │   │   └── useFiltersAndIdeas.ts # Filter/Trade Idea management
 │   │   ├── pages/
+│   │   │   ├── Admin.tsx       # Admin dashboard page
 │   │   │   └── Dashboard.tsx   # Main application page
 │   │   ├── stores/
 │   │   │   └── useAppStore.ts  # Zustand global state
@@ -174,19 +210,26 @@ PutOptionsTrading/
 ├── backend/                     # FastAPI application
 │   ├── app/
 │   │   ├── api/v1/
+│   │   │   ├── admin.py        # Admin API endpoints
+│   │   │   ├── filters.py      # Filter CRUD endpoints
 │   │   │   ├── health.py       # Health check endpoint
 │   │   │   ├── router.py       # Route aggregator
 │   │   │   ├── screen.py       # Screening endpoints
-│   │   │   └── settings.py     # User settings endpoints
+│   │   │   ├── settings.py     # User settings endpoints
+│   │   │   └── trade_ideas.py  # Trade Idea CRUD endpoints
 │   │   ├── core/
 │   │   │   ├── cache.py        # Redis/in-memory caching
 │   │   │   ├── config.py       # Settings from env vars
 │   │   │   ├── database.py     # SQLAlchemy setup
 │   │   │   └── deps.py         # FastAPI dependencies
 │   │   ├── models/
+│   │   │   ├── filter.py       # Filter model
+│   │   │   ├── trade_idea.py   # Trade Idea model
 │   │   │   └── user.py         # User + UserSettings models
 │   │   ├── schemas/
+│   │   │   ├── filter.py       # Filter schemas
 │   │   │   ├── screen.py       # Request/response schemas
+│   │   │   ├── trade_idea.py   # Trade Idea schemas
 │   │   │   └── user.py         # User schemas
 │   │   ├── services/
 │   │   │   ├── screener.py           # Options screening orchestration
@@ -612,6 +655,7 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 | `MASSIVE_API_KEY` | Yes | - | Massive.com API key |
 | `CORS_ORIGINS` | No | `*` | Allowed origins (comma-separated) |
 | `CLERK_SECRET_KEY` | No | - | Clerk secret key for JWT verification |
+| `ADMIN_CLERK_IDS` | No | - | Comma-separated Clerk user IDs for admin access |
 | `REDIS_URL` | No | - | Redis URL for caching (falls back to in-memory) |
 | `CACHE_DISABLED` | No | `false` | Set to `true` to disable caching entirely |
 | `DEBUG` | No | `false` | Enable debug mode |

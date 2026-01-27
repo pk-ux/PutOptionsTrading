@@ -26,6 +26,7 @@ def _get_screening_default(key: str, fallback) -> float:
 
 class UserSettingsSchema(BaseModel):
     """User settings schema - defaults loaded from config.json"""
+    # Legacy fields (backward compatibility)
     symbols: List[str] = None  # type: ignore
     max_dte: int = None  # type: ignore
     min_dte: int = None  # type: ignore
@@ -33,6 +34,10 @@ class UserSettingsSchema(BaseModel):
     min_open_interest: int = None  # type: ignore
     min_annualized_return: float = None  # type: ignore
     max_assignment_probability: int = None  # type: ignore
+    
+    # New fields for filters and trade ideas
+    selected_filter_id: Optional[str] = None
+    selected_trade_idea_id: Optional[str] = None
     
     def __init__(self, **data):
         # Set defaults from config.json if not provided
@@ -58,6 +63,7 @@ class UserSettingsSchema(BaseModel):
 
 class UserSettingsUpdate(BaseModel):
     """Schema for updating user settings (all fields optional)"""
+    # Legacy fields
     symbols: Optional[List[str]] = None
     max_dte: Optional[int] = None
     min_dte: Optional[int] = None
@@ -65,6 +71,10 @@ class UserSettingsUpdate(BaseModel):
     min_open_interest: Optional[int] = None
     min_annualized_return: Optional[float] = None
     max_assignment_probability: Optional[int] = None
+    
+    # New fields for filters and trade ideas
+    selected_filter_id: Optional[str] = None
+    selected_trade_idea_id: Optional[str] = None
 
 
 class UserInfo(BaseModel):

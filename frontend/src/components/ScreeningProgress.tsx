@@ -36,17 +36,22 @@ export function ScreeningProgress() {
 
   return (
     <div className="bg-dark-800/80 backdrop-blur-sm border border-white/10 rounded-xl p-4 mb-6 shadow-xl">
-      {/* Progress bar */}
-      <div className="relative h-2 bg-dark-700 rounded-full overflow-hidden mb-3">
-        <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full transition-all duration-300 ease-out"
-          style={{ width: `${progressPercent}%` }}
-        />
-        {/* Animated shimmer effect */}
-        <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"
-          style={{ width: `${progressPercent}%` }}
-        />
+      {/* Progress bar with percentage */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="relative flex-1 h-2 bg-dark-700 rounded-full overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${progressPercent}%` }}
+          />
+          {/* Animated shimmer effect */}
+          <div
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        <span className="text-sm font-medium text-primary-400 tabular-nums w-12 text-right">
+          {Math.round(progressPercent)}%
+        </span>
       </div>
 
       {/* Progress details */}
@@ -57,7 +62,7 @@ export function ScreeningProgress() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">
                 Processing{' '}
-                <span className="text-primary-400 animate-pulse">
+                <span className="text-primary-400">
                   {currentSymbol || '...'}
                 </span>
               </span>
@@ -82,11 +87,6 @@ export function ScreeningProgress() {
           <X size={14} />
           {stopRequested ? 'Stopping...' : 'Cancel'}
         </button>
-      </div>
-
-      {/* Percentage indicator */}
-      <div className="absolute top-4 right-16 text-xs font-medium text-gray-400">
-        {Math.round(progressPercent)}%
       </div>
     </div>
   );

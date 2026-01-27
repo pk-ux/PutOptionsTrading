@@ -19,7 +19,16 @@ export function NewsSection({ symbol }: NewsSectionProps) {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
+  // Don't render anything if no symbol, is Summary, or no news
   if (!symbol || symbol === 'Summary') {
+    return null;
+  }
+
+  // Hide entirely when there's no news (not loading, no error, but empty)
+  const hasNews = data && data.news && data.news.length > 0;
+  const showSection = isLoading || error || hasNews;
+
+  if (!showSection) {
     return null;
   }
 
@@ -30,14 +39,17 @@ export function NewsSection({ symbol }: NewsSectionProps) {
       </h4>
       
       {isLoading && (
-        <div className="text-gray-400 text-sm">Loading news...</div>
+        <div className="flex items-center gap-2 text-gray-400 text-sm">
+          <div className="w-4 h-4 border-2 border-gray-600 border-t-primary-500 rounded-full animate-spin" />
+          Loading news...
+        </div>
       )}
       
       {error && (
-        <div className="text-gray-400 text-sm">Failed to load news</div>
+        <div className="text-gray-500 text-sm">Unable to load news</div>
       )}
       
-      {data && data.news && data.news.length > 0 ? (
+      {hasNews && (
         <div className="space-y-3">
           {data.news.map((item, index) => (
             <div 
@@ -58,17 +70,11 @@ export function NewsSection({ symbol }: NewsSectionProps) {
                   )}
                   <span className="text-sm">— {item.title}</span>
                 </span>
-                <ExternalLink size={14} className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ExternalLink size={14} className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
               </a>
             </div>
           ))}
         </div>
-      ) : (
-        !isLoading && (
-          <div className="text-gray-500 text-sm">
-            No recent news in the last 7 days
-          </div>
-        )
       )}
     </div>
   );

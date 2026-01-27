@@ -4,15 +4,20 @@ User settings endpoints
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.deps import get_current_user, get_current_user_optional
+from ...core.deps import get_current_user, get_current_user_optional, is_admin
 from ...models import User
 from ...schemas.user import UserSettingsSchema, UserSettingsUpdate, UserInfo
 from ...services.user import get_screens_remaining
 
 router = APIRouter()
+
+
+class AdminCheckResponse(BaseModel):
+    is_admin: bool
 
 
 @router.get("/me", response_model=UserInfo)
@@ -34,6 +39,14 @@ async def get_current_user_info(
         screens_remaining=screens_remaining,
         settings=settings_schema
     )
+
+
+@router.get("/me/is-admin", response_model=AdminCheckResponse)
+async def check_admin_status(
+    user: User = Depends(get_current_user)
+):
+    """Check if current user has admin privileges"""
+    return AdminCheckResponse(is_admin=is_admin(user))
 
 
 @router.get("/settings", response_model=UserSettingsSchema)
@@ -65,7 +78,7 @@ async def update_settings(
     
     settings = user.settings
     
-    # Update only provided fields
+    # Update only provided fields (legacy fields)
     if settings_update.symbols is not None:
         settings.symbols = ",".join(settings_update.symbols)
         print(f"[Settings] Updated symbols to: {settings.symbols}")
@@ -81,6 +94,14 @@ async def update_settings(
         settings.min_annualized_return = settings_update.min_annualized_return
     if settings_update.max_assignment_probability is not None:
         settings.max_assignment_probability = settings_update.max_assignment_probability
+    
+    # Update new fields (filter and trade idea selection)
+    if settings_update.selected_filter_id is not None:
+        settings.selected_filter_id = settings_update.selected_filter_id
+        print(f"[Settings] Updated selected_filter_id to: {settings.selected_filter_id}")
+    if settings_update.selected_trade_idea_id is not None:
+        settings.selected_trade_idea_id = settings_update.selected_trade_idea_id
+        print(f"[Settings] Updated selected_trade_idea_id to: {settings.selected_trade_idea_id}")
     
     db.commit()
     db.refresh(user)

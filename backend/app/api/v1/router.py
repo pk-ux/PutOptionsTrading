@@ -8,6 +8,9 @@ from fastapi import APIRouter
 from .health import router as health_router
 from .settings import router as settings_router
 from .screen import router as screen_router
+from .filters import router as filters_router
+from .trade_ideas import router as trade_ideas_router
+from .admin import router as admin_router
 
 # Create main v1 router
 api_router = APIRouter()
@@ -16,3 +19,6 @@ api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(settings_router, prefix="/api/v1", tags=["settings"])
 api_router.include_router(screen_router, prefix="/api/v1", tags=["screening"])
+api_router.include_router(filters_router, prefix="/api/v1", tags=["filters"])
+api_router.include_router(trade_ideas_router, prefix="/api/v1", tags=["trade-ideas"])
+api_router.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])

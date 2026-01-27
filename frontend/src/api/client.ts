@@ -10,7 +10,13 @@ import type {
   ScreenRequest, 
   ScreenResponse, 
   NewsResponse,
-  HealthResponse 
+  HealthResponse,
+  Filter,
+  FilterListResponse,
+  FilterCreateRequest,
+  TradeIdea,
+  TradeIdeaListResponse,
+  TradeIdeaCreateRequest,
 } from '@/types';
 
 // Get API base URL from environment or default to relative path
@@ -78,6 +84,12 @@ export const apiClient = {
     return response.data;
   },
 
+  // Check if current user is admin
+  async checkIsAdmin(): Promise<{ is_admin: boolean }> {
+    const response = await api.get('/api/v1/me/is-admin');
+    return response.data;
+  },
+
   // Get user settings
   async getSettings(): Promise<UserSettings> {
     const response = await api.get('/api/v1/settings');
@@ -110,6 +122,116 @@ export const apiClient = {
       params: { symbol },
     });
     return response.data;
+  },
+
+  // ============== Filters API ==============
+  
+  // Get all filters (system + user's)
+  async getFilters(): Promise<FilterListResponse> {
+    const response = await api.get('/api/v1/filters');
+    return response.data;
+  },
+
+  // Get a specific filter
+  async getFilter(filterId: string): Promise<Filter> {
+    const response = await api.get(`/api/v1/filters/${filterId}`);
+    return response.data;
+  },
+
+  // Create a new user filter
+  async createFilter(filter: FilterCreateRequest): Promise<Filter> {
+    const response = await api.post('/api/v1/filters', filter);
+    return response.data;
+  },
+
+  // Update a user filter
+  async updateFilter(filterId: string, filter: Partial<FilterCreateRequest>): Promise<Filter> {
+    const response = await api.put(`/api/v1/filters/${filterId}`, filter);
+    return response.data;
+  },
+
+  // Delete a user filter
+  async deleteFilter(filterId: string): Promise<void> {
+    await api.delete(`/api/v1/filters/${filterId}`);
+  },
+
+  // ============== Trade Ideas API ==============
+  
+  // Get all trade ideas (system + user's)
+  async getTradeIdeas(): Promise<TradeIdeaListResponse> {
+    const response = await api.get('/api/v1/trade-ideas');
+    return response.data;
+  },
+
+  // Get a specific trade idea
+  async getTradeIdea(ideaId: string): Promise<TradeIdea> {
+    const response = await api.get(`/api/v1/trade-ideas/${ideaId}`);
+    return response.data;
+  },
+
+  // Create a new user trade idea
+  async createTradeIdea(idea: TradeIdeaCreateRequest): Promise<TradeIdea> {
+    const response = await api.post('/api/v1/trade-ideas', idea);
+    return response.data;
+  },
+
+  // Update a user trade idea
+  async updateTradeIdea(ideaId: string, idea: Partial<TradeIdeaCreateRequest>): Promise<TradeIdea> {
+    const response = await api.put(`/api/v1/trade-ideas/${ideaId}`, idea);
+    return response.data;
+  },
+
+  // Delete a user trade idea
+  async deleteTradeIdea(ideaId: string): Promise<void> {
+    await api.delete(`/api/v1/trade-ideas/${ideaId}`);
+  },
+
+  // ============== Admin API ==============
+  
+  // Create system filter (admin only)
+  async createSystemFilter(filter: FilterCreateRequest): Promise<Filter> {
+    const response = await api.post('/api/v1/admin/filters', filter);
+    return response.data;
+  },
+
+  // Update system filter (admin only)
+  async updateSystemFilter(filterId: string, filter: Partial<FilterCreateRequest>): Promise<Filter> {
+    const response = await api.put(`/api/v1/admin/filters/${filterId}`, filter);
+    return response.data;
+  },
+
+  // Set default system filter (admin only)
+  async setDefaultFilter(filterId: string): Promise<Filter> {
+    const response = await api.put(`/api/v1/admin/filters/${filterId}/set-default`);
+    return response.data;
+  },
+
+  // Delete system filter (admin only)
+  async deleteSystemFilter(filterId: string): Promise<void> {
+    await api.delete(`/api/v1/admin/filters/${filterId}`);
+  },
+
+  // Create system trade idea (admin only)
+  async createSystemTradeIdea(idea: TradeIdeaCreateRequest): Promise<TradeIdea> {
+    const response = await api.post('/api/v1/admin/trade-ideas', idea);
+    return response.data;
+  },
+
+  // Update system trade idea (admin only)
+  async updateSystemTradeIdea(ideaId: string, idea: Partial<TradeIdeaCreateRequest>): Promise<TradeIdea> {
+    const response = await api.put(`/api/v1/admin/trade-ideas/${ideaId}`, idea);
+    return response.data;
+  },
+
+  // Set default system trade idea (admin only)
+  async setDefaultTradeIdea(ideaId: string): Promise<TradeIdea> {
+    const response = await api.put(`/api/v1/admin/trade-ideas/${ideaId}/set-default`);
+    return response.data;
+  },
+
+  // Delete system trade idea (admin only)
+  async deleteSystemTradeIdea(ideaId: string): Promise<void> {
+    await api.delete(`/api/v1/admin/trade-ideas/${ideaId}`);
   },
 };
 

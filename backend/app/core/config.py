@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Disable caching entirely (useful for debugging)
     CACHE_DISABLED: bool = False
     
+    # Admin users (comma-separated Clerk user IDs)
+    ADMIN_CLERK_IDS: str = ""
+    
     # Stripe (Phase 3)
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
@@ -55,6 +58,13 @@ class Settings(BaseSettings):
         if self.CORS_ORIGINS == "*":
             return ["*"]
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+    
+    @property
+    def admin_clerk_ids_list(self) -> List[str]:
+        """Parse admin Clerk IDs from comma-separated string"""
+        if not self.ADMIN_CLERK_IDS:
+            return []
+        return [id.strip() for id in self.ADMIN_CLERK_IDS.split(",") if id.strip()]
     
     class Config:
         env_file = ".env"

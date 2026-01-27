@@ -28,6 +28,10 @@ class User(Base):
     # Relationship to settings
     settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
+    # Relationships to filters and trade ideas
+    filters = relationship("Filter", back_populates="user", cascade="all, delete-orphan")
+    trade_ideas = relationship("TradeIdea", back_populates="user", cascade="all, delete-orphan")
+    
     def __repr__(self):
         return f"<User {self.email}>"
 
@@ -52,16 +56,24 @@ class UserSettings(Base):
     min_annualized_return = Column(Float, default=20.0)
     max_assignment_probability = Column(Integer, default=20)
     
+    # New: Selected filter and trade idea (nullable for backward compatibility)
+    selected_filter_id = Column(String(36), ForeignKey("filters.id", ondelete="SET NULL"), nullable=True)
+    selected_trade_idea_id = Column(String(36), ForeignKey("trade_ideas.id", ondelete="SET NULL"), nullable=True)
+    
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationship to user
     user = relationship("User", back_populates="settings")
     
+    # Relationships to selected filter and trade idea
+    selected_filter = relationship("Filter", foreign_keys=[selected_filter_id])
+    selected_trade_idea = relationship("TradeIdea", foreign_keys=[selected_trade_idea_id])
+    
     def __repr__(self):
         return f"<UserSettings for user_id={self.user_id}>"
     
     def to_dict(self) -> dict:
-        """Convert settings to dictionary"""
+        """Convert settings to dictionary (legacy format for backward compatibility)"""
         symbols_list = [s.strip() for s in self.symbols.split(",") if s.strip()] if self.symbols else []
         return {
             "symbols": symbols_list,
@@ -70,5 +82,7 @@ class UserSettings(Base):
             "min_volume": self.min_volume,
             "min_open_interest": self.min_open_interest,
             "min_annualized_return": self.min_annualized_return,
-            "max_assignment_probability": self.max_assignment_probability
+            "max_assignment_probability": self.max_assignment_probability,
+            "selected_filter_id": self.selected_filter_id,
+            "selected_trade_idea_id": self.selected_trade_idea_id,
         }
