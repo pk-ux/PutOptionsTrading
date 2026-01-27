@@ -43,10 +43,16 @@ async def get_current_user_info(
 
 @router.get("/me/is-admin", response_model=AdminCheckResponse)
 async def check_admin_status(
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user_optional),
 ):
     """Check if current user has admin privileges"""
-    return AdminCheckResponse(is_admin=is_admin(user))
+    try:
+        if not user:
+            return AdminCheckResponse(is_admin=False)
+        return AdminCheckResponse(is_admin=is_admin(user))
+    except Exception as e:
+        print(f"[Admin Check Error] {e}")
+        return AdminCheckResponse(is_admin=False)
 
 
 @router.get("/settings", response_model=UserSettingsSchema)
