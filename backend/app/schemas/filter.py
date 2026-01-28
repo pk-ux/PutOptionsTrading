@@ -41,6 +41,7 @@ class FilterResponse(BaseModel):
     name: str
     is_system: bool
     is_default: bool
+    display_order: int = 0
     user_id: Optional[str] = None
     min_dte: int
     max_dte: int

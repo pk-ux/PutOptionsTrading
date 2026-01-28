@@ -10,6 +10,7 @@ import apiClient from '@/api/client';
 import { Modal } from '@/components/Modal';
 import { FilterForm } from '@/components/FilterForm';
 import { TradeIdeaForm } from '@/components/TradeIdeaForm';
+import { SortableList } from '@/components/SortableList';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
@@ -178,6 +179,35 @@ export function Admin() {
     }
   };
 
+  // Reorder handlers
+  const handleReorderFilters = async (newFilters: Filter[]) => {
+    const previousFilters = systemFilters;
+    setSystemFilters(newFilters); // Optimistic update
+
+    try {
+      const ids = newFilters.map((f) => f.id);
+      await apiClient.reorderSystemFilters(ids);
+    } catch (err) {
+      console.error('Failed to reorder filters:', err);
+      setSystemFilters(previousFilters); // Rollback on error
+      alert('Failed to reorder filters');
+    }
+  };
+
+  const handleReorderTradeIdeas = async (newIdeas: TradeIdea[]) => {
+    const previousIdeas = systemTradeIdeas;
+    setSystemTradeIdeas(newIdeas); // Optimistic update
+
+    try {
+      const ids = newIdeas.map((i) => i.id);
+      await apiClient.reorderSystemTradeIdeas(ids);
+    } catch (err) {
+      console.error('Failed to reorder trade ideas:', err);
+      setSystemTradeIdeas(previousIdeas); // Rollback on error
+      alert('Failed to reorder trade ideas');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -242,12 +272,11 @@ export function Admin() {
           {systemFilters.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No system filters yet</p>
           ) : (
-            <div className="space-y-3">
-              {systemFilters.map((filter) => (
-                <div
-                  key={filter.id}
-                  className="flex items-start justify-between p-3 bg-dark-800 rounded-lg border border-white/5"
-                >
+            <SortableList
+              items={systemFilters}
+              onReorder={handleReorderFilters}
+              renderItem={(filter) => (
+                <div className="flex items-start justify-between p-3 bg-dark-800 rounded-lg border border-white/5">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {filter.is_default && (
@@ -291,8 +320,8 @@ export function Admin() {
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+            />
           )}
         </div>
 
@@ -312,12 +341,11 @@ export function Admin() {
           {systemTradeIdeas.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No system trade ideas yet</p>
           ) : (
-            <div className="space-y-3">
-              {systemTradeIdeas.map((idea) => (
-                <div
-                  key={idea.id}
-                  className="flex items-start justify-between p-3 bg-dark-800 rounded-lg border border-white/5"
-                >
+            <SortableList
+              items={systemTradeIdeas}
+              onReorder={handleReorderTradeIdeas}
+              renderItem={(idea) => (
+                <div className="flex items-start justify-between p-3 bg-dark-800 rounded-lg border border-white/5">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {idea.is_default && (
@@ -363,8 +391,8 @@ export function Admin() {
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+            />
           )}
         </div>
       </div>

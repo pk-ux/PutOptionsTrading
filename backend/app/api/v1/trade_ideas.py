@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.deps import get_current_user, get_current_user_optional, is_admin
+from ...core.deps import get_current_user, get_current_user_optional
 from ...models import User, TradeIdea
 from ...schemas.trade_idea import (
     TradeIdeaCreate,
@@ -31,6 +31,7 @@ def _trade_idea_to_response(idea: TradeIdea) -> TradeIdeaResponse:
         description=idea.description,
         is_system=idea.is_system,
         is_default=idea.is_default,
+        display_order=idea.display_order,
         user_id=idea.user_id,
         symbols=idea.get_symbols_list(),
         created_at=idea.created_at,
@@ -47,16 +48,16 @@ async def list_trade_ideas(
     List all trade ideas available to the user.
     Returns system trade ideas + user's own trade ideas.
     """
-    # Get all system trade ideas
-    system_ideas = db.query(TradeIdea).filter(TradeIdea.is_system == True).all()
+    # Get all system trade ideas ordered by display_order
+    system_ideas = db.query(TradeIdea).filter(TradeIdea.is_system == True).order_by(TradeIdea.display_order).all()
     
-    # Get user's trade ideas if authenticated
+    # Get user's trade ideas if authenticated (ordered by display_order)
     user_ideas = []
     if user:
         user_ideas = db.query(TradeIdea).filter(
             TradeIdea.is_system == False,
             TradeIdea.user_id == user.id
-        ).all()
+        ).order_by(TradeIdea.display_order).all()
     
     # Find default trade idea ID
     default_idea = next((i for i in system_ideas if i.is_default), None)

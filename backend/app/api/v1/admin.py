@@ -5,15 +5,21 @@ Admin API endpoints for managing system filters and trade ideas
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.deps import get_current_admin, is_admin
+from ...core.deps import get_current_admin
 from ...models import User, Filter, TradeIdea
 from ...schemas.filter import FilterCreate, FilterUpdate, FilterResponse
 from ...schemas.trade_idea import TradeIdeaCreate, TradeIdeaUpdate, TradeIdeaResponse
 
 router = APIRouter()
+
+
+class ReorderRequest(BaseModel):
+    """Request schema for reordering items"""
+    ids: List[str]  # Ordered list of IDs
 
 
 # ============== System Filters ==============
@@ -25,6 +31,7 @@ def _filter_to_response(filter_obj: Filter) -> FilterResponse:
         name=filter_obj.name,
         is_system=filter_obj.is_system,
         is_default=filter_obj.is_default,
+        display_order=filter_obj.display_order,
         user_id=filter_obj.user_id,
         min_dte=filter_obj.min_dte,
         max_dte=filter_obj.max_dte,
@@ -43,8 +50,38 @@ async def list_system_filters(
     db: Session = Depends(get_db)
 ):
     """List all system filters (admin only)."""
-    filters = db.query(Filter).filter(Filter.is_system == True).all()
+    filters = db.query(Filter).filter(Filter.is_system == True).order_by(Filter.display_order).all()
     return [_filter_to_response(f) for f in filters]
+
+
+@router.put("/filters/reorder", response_model=List[FilterResponse])
+async def reorder_system_filters(
+    request: ReorderRequest,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Reorder system filters (admin only)."""
+    # Verify all IDs are valid system filters
+    filters = db.query(Filter).filter(
+        Filter.id.in_(request.ids),
+        Filter.is_system == True
+    ).all()
+    
+    if len(filters) != len(request.ids):
+        raise HTTPException(status_code=400, detail="Invalid filter IDs provided")
+    
+    # Create a map for quick lookup
+    filter_map = {f.id: f for f in filters}
+    
+    # Update display_order based on position in the list
+    for index, filter_id in enumerate(request.ids):
+        filter_map[filter_id].display_order = index
+    
+    db.commit()
+    
+    # Return updated filters in new order
+    ordered_filters = [filter_map[fid] for fid in request.ids]
+    return [_filter_to_response(f) for f in ordered_filters]
 
 
 @router.post("/filters", response_model=FilterResponse)
@@ -183,6 +220,7 @@ def _trade_idea_to_response(idea: TradeIdea) -> TradeIdeaResponse:
         description=idea.description,
         is_system=idea.is_system,
         is_default=idea.is_default,
+        display_order=idea.display_order,
         user_id=idea.user_id,
         symbols=idea.get_symbols_list(),
         created_at=idea.created_at,
@@ -196,8 +234,38 @@ async def list_system_trade_ideas(
     db: Session = Depends(get_db)
 ):
     """List all system trade ideas (admin only)."""
-    ideas = db.query(TradeIdea).filter(TradeIdea.is_system == True).all()
+    ideas = db.query(TradeIdea).filter(TradeIdea.is_system == True).order_by(TradeIdea.display_order).all()
     return [_trade_idea_to_response(i) for i in ideas]
+
+
+@router.put("/trade-ideas/reorder", response_model=List[TradeIdeaResponse])
+async def reorder_system_trade_ideas(
+    request: ReorderRequest,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Reorder system trade ideas (admin only)."""
+    # Verify all IDs are valid system trade ideas
+    ideas = db.query(TradeIdea).filter(
+        TradeIdea.id.in_(request.ids),
+        TradeIdea.is_system == True
+    ).all()
+    
+    if len(ideas) != len(request.ids):
+        raise HTTPException(status_code=400, detail="Invalid trade idea IDs provided")
+    
+    # Create a map for quick lookup
+    idea_map = {i.id: i for i in ideas}
+    
+    # Update display_order based on position in the list
+    for index, idea_id in enumerate(request.ids):
+        idea_map[idea_id].display_order = index
+    
+    db.commit()
+    
+    # Return updated trade ideas in new order
+    ordered_ideas = [idea_map[iid] for iid in request.ids]
+    return [_trade_idea_to_response(i) for i in ordered_ideas]
 
 
 @router.post("/trade-ideas", response_model=TradeIdeaResponse)

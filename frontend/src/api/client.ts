@@ -233,6 +233,18 @@ export const apiClient = {
   async deleteSystemTradeIdea(ideaId: string): Promise<void> {
     await api.delete(`/api/v1/admin/trade-ideas/${ideaId}`);
   },
+
+  // Reorder system filters (admin only)
+  async reorderSystemFilters(ids: string[]): Promise<Filter[]> {
+    const response = await api.put('/api/v1/admin/filters/reorder', { ids });
+    return response.data;
+  },
+
+  // Reorder system trade ideas (admin only)
+  async reorderSystemTradeIdeas(ids: string[]): Promise<TradeIdea[]> {
+    const response = await api.put('/api/v1/admin/trade-ideas/reorder', { ids });
+    return response.data;
+  },
 };
 
 export default apiClient;

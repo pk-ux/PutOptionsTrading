@@ -21,6 +21,7 @@ class Filter(Base):
     # System vs user filter
     is_system = Column(Boolean, default=False, nullable=False)
     is_default = Column(Boolean, default=False, nullable=False)  # Only one system filter can be default
+    display_order = Column(Integer, default=0, nullable=False)  # For ordering in UI
     
     # Owner (null for system filters)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
@@ -56,6 +57,7 @@ class Filter(Base):
             "name": self.name,
             "is_system": self.is_system,
             "is_default": self.is_default,
+            "display_order": self.display_order,
             "user_id": self.user_id,
             "min_dte": self.min_dte,
             "max_dte": self.max_dte,

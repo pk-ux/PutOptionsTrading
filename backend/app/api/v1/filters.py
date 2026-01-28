@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.deps import get_current_user, get_current_user_optional, is_admin
+from ...core.deps import get_current_user, get_current_user_optional
 from ...models import User, Filter
 from ...schemas.filter import (
     FilterCreate,
@@ -30,6 +30,7 @@ def _filter_to_response(filter_obj: Filter) -> FilterResponse:
         name=filter_obj.name,
         is_system=filter_obj.is_system,
         is_default=filter_obj.is_default,
+        display_order=filter_obj.display_order,
         user_id=filter_obj.user_id,
         min_dte=filter_obj.min_dte,
         max_dte=filter_obj.max_dte,
@@ -51,16 +52,16 @@ async def list_filters(
     List all filters available to the user.
     Returns system filters + user's own filters.
     """
-    # Get all system filters
-    system_filters = db.query(Filter).filter(Filter.is_system == True).all()
+    # Get all system filters ordered by display_order
+    system_filters = db.query(Filter).filter(Filter.is_system == True).order_by(Filter.display_order).all()
     
-    # Get user's filters if authenticated
+    # Get user's filters if authenticated (ordered by display_order)
     user_filters = []
     if user:
         user_filters = db.query(Filter).filter(
             Filter.is_system == False,
             Filter.user_id == user.id
-        ).all()
+        ).order_by(Filter.display_order).all()
     
     # Find default filter ID
     default_filter = next((f for f in system_filters if f.is_default), None)

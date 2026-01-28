@@ -34,6 +34,7 @@ class TradeIdeaResponse(BaseModel):
     description: Optional[str] = None
     is_system: bool
     is_default: bool
+    display_order: int = 0
     user_id: Optional[str] = None
     symbols: List[str]
     created_at: Optional[datetime] = None

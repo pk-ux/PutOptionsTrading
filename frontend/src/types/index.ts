@@ -25,6 +25,7 @@ export interface Filter {
   name: string;
   is_system: boolean;
   is_default: boolean;
+  display_order: number;
   user_id?: string | null;
   min_dte: number;
   max_dte: number;
@@ -50,6 +51,7 @@ export interface TradeIdea {
   description?: string | null;
   is_system: boolean;
   is_default: boolean;
+  display_order: number;
   user_id?: string | null;
   symbols: string[];
   created_at?: string;

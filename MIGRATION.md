@@ -136,7 +136,35 @@ railway up
    - Test creating, editing, and deleting system filters and trade ideas
    - Test setting different items as default
 
-### Step 8: (Optional) Cleanup Old Columns
+### Step 8: Add display_order Column (Reordering Feature)
+
+If you're adding the drag-and-drop reordering feature, run these SQL commands:
+
+**Railway PostgreSQL (using public URL):**
+```bash
+cd backend
+DATABASE_URL="postgresql://postgres:password@host.railway.app:port/railway" python -c "
+from sqlalchemy import create_engine, text
+import os
+
+engine = create_engine(os.getenv('DATABASE_URL'))
+with engine.connect() as conn:
+    conn.execute(text('ALTER TABLE filters ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0'))
+    conn.execute(text('ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0'))
+    conn.commit()
+    print('Successfully added display_order columns')
+"
+```
+
+Or directly in psql:
+```sql
+ALTER TABLE filters ADD COLUMN display_order INTEGER DEFAULT 0;
+ALTER TABLE trade_ideas ADD COLUMN display_order INTEGER DEFAULT 0;
+```
+
+After running the migration, admins can reorder system filters and trade ideas via drag-and-drop in the Admin Dashboard.
+
+### Step 9: (Optional) Cleanup Old Columns
 
 After confirming everything works, you can optionally remove the old columns from `user_settings`. This is NOT required and can be done later.
 
@@ -221,6 +249,8 @@ If issues occur:
 | `/api/v1/admin/trade-ideas/{id}` | PUT | Update system trade idea |
 | `/api/v1/admin/trade-ideas/{id}/set-default` | PUT | Set default trade idea |
 | `/api/v1/admin/trade-ideas/{id}` | DELETE | Delete system trade idea |
+| `/api/v1/admin/filters/reorder` | PUT | Reorder system filters (admin) |
+| `/api/v1/admin/trade-ideas/reorder` | PUT | Reorder system trade ideas (admin) |
 
 ### Modified Endpoints
 

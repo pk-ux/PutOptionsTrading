@@ -5,7 +5,7 @@ TradeIdea database model for storing curated watchlists
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Index, Integer
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -22,6 +22,7 @@ class TradeIdea(Base):
     # System vs user trade idea
     is_system = Column(Boolean, default=False, nullable=False)
     is_default = Column(Boolean, default=False, nullable=False)  # Only one system trade idea can be default
+    display_order = Column(Integer, default=0, nullable=False)  # For ordering in UI
     
     # Owner (null for system trade ideas)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
@@ -63,6 +64,7 @@ class TradeIdea(Base):
             "description": self.description,
             "is_system": self.is_system,
             "is_default": self.is_default,
+            "display_order": self.display_order,
             "user_id": self.user_id,
             "symbols": self.get_symbols_list(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
