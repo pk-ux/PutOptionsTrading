@@ -158,3 +158,12 @@ export interface HealthResponse {
   massive_api: string;
   auth: string;
 }
+
+// Cache settings (admin only)
+export interface CacheSettings {
+  cache_enabled: boolean;
+  ttl_stock_price: number;
+  ttl_options_chain: number;
+  ttl_news: number;
+  updated_at?: string;
+}

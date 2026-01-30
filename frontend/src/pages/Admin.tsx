@@ -11,6 +11,7 @@ import { Modal } from '@/components/Modal';
 import { FilterForm } from '@/components/FilterForm';
 import { TradeIdeaForm } from '@/components/TradeIdeaForm';
 import { SortableList } from '@/components/SortableList';
+import { CacheSettingsCard } from '@/components/CacheSettingsCard';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
@@ -436,6 +437,11 @@ export function Admin() {
           loading={formLoading}
         />
       </Modal>
+
+      {/* Cache Settings - Full Width at Bottom */}
+      <div className="mt-6">
+        <CacheSettingsCard isReady={isReady} />
+      </div>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import type {
   TradeIdea,
   TradeIdeaListResponse,
   TradeIdeaCreateRequest,
+  CacheSettings,
 } from '@/types';
 
 // Get API base URL from environment or default to relative path
@@ -243,6 +244,18 @@ export const apiClient = {
   // Reorder system trade ideas (admin only)
   async reorderSystemTradeIdeas(ids: string[]): Promise<TradeIdea[]> {
     const response = await api.put('/api/v1/admin/trade-ideas/reorder', { ids });
+    return response.data;
+  },
+
+  // Get cache settings (admin only)
+  async getCacheSettings(): Promise<CacheSettings> {
+    const response = await api.get('/api/v1/admin/cache-settings');
+    return response.data;
+  },
+
+  // Update cache settings (admin only)
+  async updateCacheSettings(settings: Partial<CacheSettings>): Promise<CacheSettings> {
+    const response = await api.put('/api/v1/admin/cache-settings', settings);
     return response.data;
   },
 };

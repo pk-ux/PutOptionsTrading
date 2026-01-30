@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     # Redis Cache (optional - falls back to in-memory if not set)
     REDIS_URL: Optional[str] = None
     
-    # Disable caching entirely (useful for debugging)
-    CACHE_DISABLED: bool = False
-    
     # Admin users (comma-separated Clerk user IDs)
     ADMIN_CLERK_IDS: str = ""
     

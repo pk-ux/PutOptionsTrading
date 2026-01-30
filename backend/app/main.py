@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
 from .core.database import init_db
-from .core.cache import get_cache
+from .core.cache import get_cache, load_cache_settings_from_db
 from .api.v1.router import api_router
 
 settings = get_settings()
@@ -22,6 +22,9 @@ async def lifespan(app: FastAPI):
     """Initialize resources on startup"""
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     init_db()
+    
+    # Load cache settings from database into memory
+    load_cache_settings_from_db()
     
     # Initialize cache connection
     cache = get_cache()

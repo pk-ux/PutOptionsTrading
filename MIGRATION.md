@@ -162,6 +162,61 @@ ALTER TABLE filters ADD COLUMN display_order INTEGER DEFAULT 0;
 ALTER TABLE trade_ideas ADD COLUMN display_order INTEGER DEFAULT 0;
 ```
 
+### Step 9: Add Cache Settings Table (Admin Cache Control)
+
+If you're adding the admin cache settings feature, run these SQL commands:
+
+**Railway PostgreSQL (using public URL):**
+```bash
+cd backend
+DATABASE_URL="postgresql://postgres:password@host.railway.app:port/railway" python -c "
+from sqlalchemy import create_engine, text
+import os
+
+engine = create_engine(os.getenv('DATABASE_URL'))
+with engine.connect() as conn:
+    # Create cache_settings table
+    conn.execute(text('''
+        CREATE TABLE IF NOT EXISTS cache_settings (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            cache_enabled BOOLEAN NOT NULL DEFAULT true,
+            ttl_stock_price INTEGER NOT NULL DEFAULT 180,
+            ttl_options_chain INTEGER NOT NULL DEFAULT 300,
+            ttl_news INTEGER NOT NULL DEFAULT 900,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    '''))
+    
+    # Insert default row if not exists
+    conn.execute(text('''
+        INSERT INTO cache_settings (id, cache_enabled, ttl_stock_price, ttl_options_chain, ttl_news)
+        VALUES (1, true, 180, 300, 900)
+        ON CONFLICT (id) DO NOTHING
+    '''))
+    
+    conn.commit()
+    print('Successfully created cache_settings table')
+"
+```
+
+Or directly in psql:
+```sql
+CREATE TABLE IF NOT EXISTS cache_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    cache_enabled BOOLEAN NOT NULL DEFAULT true,
+    ttl_stock_price INTEGER NOT NULL DEFAULT 180,
+    ttl_options_chain INTEGER NOT NULL DEFAULT 300,
+    ttl_news INTEGER NOT NULL DEFAULT 900,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO cache_settings (id, cache_enabled, ttl_stock_price, ttl_options_chain, ttl_news)
+VALUES (1, true, 180, 300, 900)
+ON CONFLICT (id) DO NOTHING;
+```
+
+After running the migration, admins can control caching via the Admin Dashboard under "Cache Settings".
+
 After running the migration, admins can reorder system filters and trade ideas via drag-and-drop in the Admin Dashboard.
 
 ### Step 9: (Optional) Cleanup Old Columns

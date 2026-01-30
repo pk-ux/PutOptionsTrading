@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.deps import get_current_admin
-from ...models import User, Filter, TradeIdea
+from ...models import User, Filter, TradeIdea, CacheSettings
 from ...schemas.filter import FilterCreate, FilterUpdate, FilterResponse
 from ...schemas.trade_idea import TradeIdeaCreate, TradeIdeaUpdate, TradeIdeaResponse
 
@@ -379,6 +379,89 @@ async def delete_system_trade_idea(
     db.commit()
     
     return {"message": "System trade idea deleted successfully"}
+
+
+# ============== Cache Settings ==============
+
+class CacheSettingsResponse(BaseModel):
+    """Response schema for cache settings"""
+    cache_enabled: bool
+    ttl_stock_price: int
+    ttl_options_chain: int
+    ttl_news: int
+    updated_at: str | None = None
+
+
+class CacheSettingsUpdate(BaseModel):
+    """Request schema for updating cache settings"""
+    cache_enabled: bool | None = None
+    ttl_stock_price: int | None = None
+    ttl_options_chain: int | None = None
+    ttl_news: int | None = None
+
+
+def _get_or_create_cache_settings(db: Session) -> CacheSettings:
+    """Get the cache settings row, creating it with defaults if it doesn't exist."""
+    settings = db.query(CacheSettings).filter(CacheSettings.id == 1).first()
+    if not settings:
+        settings = CacheSettings(
+            id=1,
+            cache_enabled=True,
+            ttl_stock_price=180,
+            ttl_options_chain=300,
+            ttl_news=900,
+        )
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+@router.get("/cache-settings", response_model=CacheSettingsResponse)
+async def get_cache_settings(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Get current cache settings (admin only)."""
+    settings = _get_or_create_cache_settings(db)
+    return CacheSettingsResponse(
+        cache_enabled=settings.cache_enabled,
+        ttl_stock_price=settings.ttl_stock_price,
+        ttl_options_chain=settings.ttl_options_chain,
+        ttl_news=settings.ttl_news,
+        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+    )
+
+
+@router.put("/cache-settings", response_model=CacheSettingsResponse)
+async def update_cache_settings(
+    data: CacheSettingsUpdate,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Update cache settings (admin only)."""
+    from ...core.cache import update_cache_settings_in_memory
+    
+    settings = _get_or_create_cache_settings(db)
+    
+    # Update fields that were provided
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(settings, field, value)
+    
+    db.commit()
+    db.refresh(settings)
+    
+    # Update in-memory cache settings
+    update_cache_settings_in_memory(settings.to_dict())
+    
+    return CacheSettingsResponse(
+        cache_enabled=settings.cache_enabled,
+        ttl_stock_price=settings.ttl_stock_price,
+        ttl_options_chain=settings.ttl_options_chain,
+        ttl_news=settings.ttl_news,
+        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+    )
 
 
 # ============== Seed System Data ==============
