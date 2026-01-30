@@ -257,75 +257,6 @@ export function Admin() {
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* System Filters */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">System Filters</h2>
-            <button
-              onClick={handleCreateFilter}
-              className="btn-primary flex items-center gap-2 text-sm py-2"
-            >
-              <Plus size={16} />
-              Add Filter
-            </button>
-          </div>
-
-          {systemFilters.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No system filters yet</p>
-          ) : (
-            <SortableList
-              items={systemFilters}
-              onReorder={handleReorderFilters}
-              renderItem={(filter) => (
-                <div className="flex items-start justify-between p-3 bg-dark-800 rounded-lg border border-white/5">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {filter.is_default && (
-                        <Star size={14} className="text-yellow-400 fill-yellow-400" />
-                      )}
-                      <span className="font-medium text-white truncate">
-                        {filter.name}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      DTE: {filter.min_dte}-{filter.max_dte} | Vol: {filter.min_volume} |
-                      OI: {filter.min_open_interest} | Ret: {filter.min_annualized_return}% |
-                      Prob: {filter.max_assignment_probability}%
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 ml-2">
-                    <button
-                      onClick={() => handleEditFilter(filter)}
-                      className="p-2 hover:bg-white/10 rounded transition-colors"
-                      title="Edit"
-                    >
-                      <Edit2 size={14} className="text-gray-400" />
-                    </button>
-                    {!filter.is_default && (
-                      <>
-                        <button
-                          onClick={() => handleSetDefaultFilter(filter)}
-                          className="p-2 hover:bg-white/10 rounded transition-colors"
-                          title="Set as Default"
-                        >
-                          <Star size={14} className="text-gray-400" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFilter(filter)}
-                          className="p-2 hover:bg-red-500/20 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={14} className="text-red-400" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            />
-          )}
-        </div>
-
         {/* System Trade Ideas */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
@@ -383,6 +314,75 @@ export function Admin() {
                         </button>
                         <button
                           onClick={() => handleDeleteTradeIdea(idea)}
+                          className="p-2 hover:bg-red-500/20 rounded transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={14} className="text-red-400" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            />
+          )}
+        </div>
+
+        {/* System Filters */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">System Filters</h2>
+            <button
+              onClick={handleCreateFilter}
+              className="btn-primary flex items-center gap-2 text-sm py-2"
+            >
+              <Plus size={16} />
+              Add Filter
+            </button>
+          </div>
+
+          {systemFilters.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No system filters yet</p>
+          ) : (
+            <SortableList
+              items={systemFilters}
+              onReorder={handleReorderFilters}
+              renderItem={(filter) => (
+                <div className="flex items-start justify-between p-3 bg-dark-800 rounded-lg border border-white/5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {filter.is_default && (
+                        <Star size={14} className="text-yellow-400 fill-yellow-400" />
+                      )}
+                      <span className="font-medium text-white truncate">
+                        {filter.name}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      DTE: {filter.min_dte}-{filter.max_dte} | Vol: {filter.min_volume} |
+                      OI: {filter.min_open_interest} | Ret: {filter.min_annualized_return}% |
+                      Prob: {filter.max_assignment_probability}%
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 ml-2">
+                    <button
+                      onClick={() => handleEditFilter(filter)}
+                      className="p-2 hover:bg-white/10 rounded transition-colors"
+                      title="Edit"
+                    >
+                      <Edit2 size={14} className="text-gray-400" />
+                    </button>
+                    {!filter.is_default && (
+                      <>
+                        <button
+                          onClick={() => handleSetDefaultFilter(filter)}
+                          className="p-2 hover:bg-white/10 rounded transition-colors"
+                          title="Set as Default"
+                        >
+                          <Star size={14} className="text-gray-400" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteFilter(filter)}
                           className="p-2 hover:bg-red-500/20 rounded transition-colors"
                           title="Delete"
                         >
