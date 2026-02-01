@@ -12,6 +12,8 @@ import { FilterForm } from '@/components/FilterForm';
 import { TradeIdeaForm } from '@/components/TradeIdeaForm';
 import { SortableList } from '@/components/SortableList';
 import { CacheSettingsCard } from '@/components/CacheSettingsCard';
+import { ApiProviderCard } from '@/components/ApiProviderCard';
+import { MarketSettingsCard } from '@/components/MarketSettingsCard';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
@@ -438,7 +440,13 @@ export function Admin() {
         />
       </Modal>
 
-      {/* Cache Settings - Full Width at Bottom */}
+      {/* Settings Cards Row at Bottom */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ApiProviderCard isReady={isReady} />
+        <MarketSettingsCard isReady={isReady} />
+      </div>
+      
+      {/* Cache Settings Row */}
       <div className="mt-6">
         <CacheSettingsCard isReady={isReady} />
       </div>

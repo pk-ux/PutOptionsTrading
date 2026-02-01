@@ -167,3 +167,19 @@ export interface CacheSettings {
   ttl_news: number;
   updated_at?: string;
 }
+
+// API provider settings (admin only)
+export interface ApiProviderSettings {
+  active_provider: 'massive' | 'alpaca';
+  use_midpoint_pricing: boolean;
+  massive_api_configured: boolean;
+  alpaca_api_configured: boolean;
+  updated_at?: string;
+}
+
+// Market settings (admin only)
+export interface MarketSettings {
+  risk_free_rate: number;  // As decimal (e.g., 0.0367 for 3.67%)
+  risk_free_rate_percent: number;  // Convenience: risk_free_rate * 100
+  updated_at?: string;
+}

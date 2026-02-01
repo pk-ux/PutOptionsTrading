@@ -4,13 +4,34 @@ Options Screener - Core screening logic
 """
 
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from scipy.stats import norm
+from datetime import datetime
+from typing import Dict, List, Optional
+
 import yfinance as yf
-from typing import Optional
 
 from .massive_api_client import get_massive_client
+from .alpaca_api_client import get_alpaca_client
+from ..core.api_provider import get_active_provider, get_use_midpoint_pricing
+
+
+def fetch_alpaca_volumes(contract_symbols: List[str]) -> Dict[str, int]:
+    """
+    Fetch volumes for filtered Alpaca contracts.
+    
+    This is called after all non-volume filters have been applied,
+    minimizing the number of API calls needed.
+    
+    Args:
+        contract_symbols: List of option contract symbols to fetch volume for
+        
+    Returns:
+        Dictionary mapping contract symbol to daily volume
+    """
+    use_midpoint = get_use_midpoint_pricing()
+    alpaca_client = get_alpaca_client(use_midpoint_pricing=use_midpoint)
+    if alpaca_client and contract_symbols:
+        return alpaca_client._fetch_option_volumes(contract_symbols)
+    return {}
 
 
 def get_stock_price_yahoo(symbol: str) -> Optional[float]:
@@ -24,12 +45,12 @@ def get_stock_price_yahoo(symbol: str) -> Optional[float]:
             print(f"Yahoo Finance price for {symbol}: ${current_price:.2f}")
             return round(current_price, 2)
         else:
-            print(f"Yahoo Finance failed for {symbol} - using fallback")
-            return generate_realistic_price(symbol)
+            print(f"WARNING: Yahoo Finance returned no price for {symbol}")
+            return None
             
     except Exception as e:
-        print(f"Error getting Yahoo Finance price for {symbol}: {str(e)} - using fallback")
-        return generate_realistic_price(symbol)
+        print(f"ERROR getting Yahoo Finance price for {symbol}: {str(e)}")
+        return None
 
 
 def get_stock_price_massive(symbol: str) -> Optional[float]:
@@ -45,41 +66,40 @@ def get_stock_price_massive(symbol: str) -> Optional[float]:
         return None
 
 
+def get_stock_price_alpaca(symbol: str) -> Optional[float]:
+    """Get current stock price using Alpaca API (real-time bid/ask)"""
+    try:
+        use_midpoint = get_use_midpoint_pricing()
+        alpaca_client = get_alpaca_client(use_midpoint_pricing=use_midpoint)
+        if not alpaca_client:
+            print(f"Alpaca client not available for {symbol}")
+            return None
+        return alpaca_client.get_stock_price(symbol)
+    except Exception as e:
+        print(f"ERROR getting Alpaca price for {symbol}: {str(e)}")
+        return None
+
+
 def get_stock_price(symbol: str, api_source: str = "massive") -> Optional[float]:
     """Get current stock price using selected API source"""
     if api_source.lower() == "yahoo":
         return get_stock_price_yahoo(symbol)
+    elif api_source.lower() == "alpaca":
+        return get_stock_price_alpaca(symbol)
     else:  # Default to massive
         return get_stock_price_massive(symbol)
 
 
-def generate_realistic_price(symbol: str) -> float:
-    """Generate realistic stock price based on symbol"""
-    # Common stock price ranges
-    price_ranges = {
-        'AAPL': (150, 200),
-        'MSFT': (300, 400), 
-        'GOOGL': (120, 180),
-        'SPY': (400, 500),
-        'QQQ': (350, 450),
-        'TSLA': (200, 300),
-        'NVDA': (100, 150),
-        'AMD': (120, 180),
-        'META': (400, 550),
-        'INTC': (20, 40)
-    }
-    
-    if symbol in price_ranges:
-        low, high = price_ranges[symbol]
-        return round(np.random.uniform(low, high), 2)
-    else:
-        # Default range for unknown symbols
-        return round(np.random.uniform(50, 200), 2)
-
-
 def get_options_chain_yahoo(symbol: str, config: dict) -> pd.DataFrame:
-    """Retrieve real options chain using Yahoo Finance"""
+    """
+    Retrieve real options chain using Yahoo Finance.
+    
+    Uses shared Greeks calculator for Black-Scholes calculations
+    when Greeks are not provided by the API.
+    """
     try:
+        from .greeks_calculator import calculate_all_greeks, calculate_implied_volatility
+        
         stock = yf.Ticker(symbol)
         max_dte = config['options_strategy']['max_dte']
         min_dte = config['options_strategy'].get('min_dte', 0)
@@ -90,26 +110,44 @@ def get_options_chain_yahoo(symbol: str, config: dict) -> pd.DataFrame:
         
         all_options = pd.DataFrame()
         
+        # Get current stock price once
+        current_price = get_stock_price_yahoo(symbol)
+        
         for date in expiry_dates:
             try:
                 chain = stock.option_chain(date)
-                puts = chain.puts
+                puts = chain.puts.copy()
                 puts['expiry'] = date
                 puts['dte'] = int((pd.to_datetime(date) - datetime.now()).days)
                 puts['symbol'] = symbol
                 
-                # Calculate Greeks if not available
-                if 'delta' not in puts.columns:
-                    current_price = get_stock_price_yahoo(symbol)
-                    S = current_price
-                    K = puts['strike']
-                    T = puts['dte'] / 365
-                    r = 0.05  # Risk-free rate (approximate)
-                    sigma = puts['impliedVolatility']
+                # Calculate Greeks using shared calculator if not available
+                if 'delta' not in puts.columns and current_price:
+                    # Calculate Greeks for each option row
+                    greeks_list = []
+                    for idx, row in puts.iterrows():
+                        T = row['dte'] / 365.0
+                        iv = row.get('impliedVolatility', 0.3)
+                        
+                        if T > 0 and iv > 0:
+                            greeks = calculate_all_greeks(
+                                S=current_price,
+                                K=row['strike'],
+                                T=T,
+                                sigma=iv,
+                                option_type='put'
+                            )
+                        else:
+                            greeks = {'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0, 'rho': 0}
+                        
+                        greeks_list.append(greeks)
                     
-                    # Black-Scholes delta calculation for puts
-                    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
-                    puts['delta'] = -norm.cdf(-d1)
+                    # Add Greeks columns
+                    puts['delta'] = [g['delta'] for g in greeks_list]
+                    puts['gamma'] = [g['gamma'] for g in greeks_list]
+                    puts['theta'] = [g['theta'] for g in greeks_list]
+                    puts['vega'] = [g['vega'] for g in greeks_list]
+                    puts['rho'] = [g['rho'] for g in greeks_list]
                 
                 # Ensure all required columns are present
                 if 'openInterest' in puts.columns:
@@ -154,11 +192,39 @@ def get_options_chain_massive(symbol: str, config: dict) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_options_chain_alpaca(symbol: str, config: dict) -> pd.DataFrame:
+    """
+    Get options chain with real-time Greeks from Alpaca API.
+    
+    Key advantages:
+    - Real-time bid/ask quotes (mid-point pricing available)
+    - Greeks: delta, gamma, theta, vega, rho
+    - Implied Volatility
+    - Volume & Open Interest
+    """
+    try:
+        use_midpoint = get_use_midpoint_pricing()
+        alpaca_client = get_alpaca_client(use_midpoint_pricing=use_midpoint)
+        if not alpaca_client:
+            print(f"Alpaca client not available for {symbol}")
+            return pd.DataFrame()
+        
+        print(f"Fetching options with real-time Greeks for {symbol} from Alpaca...")
+        return alpaca_client.get_options_chain(symbol, config)
+        
+    except Exception as e:
+        print(f"Error getting Alpaca options chain for {symbol}: {str(e)}")
+        return pd.DataFrame()
+
+
 def get_options_chain(symbol: str, config: dict, api_source: str = "massive") -> pd.DataFrame:
     """Get real options chain data using selected API source"""
     if api_source.lower() == "yahoo":
         print(f"Using Yahoo Finance for options data for {symbol}")
         return get_options_chain_yahoo(symbol, config)
+    elif api_source.lower() == "alpaca":
+        print(f"Using Alpaca API for options data for {symbol}")
+        return get_options_chain_alpaca(symbol, config)
     else:  # Default to massive
         print(f"Using Massive.com API for options data for {symbol}")
         return get_options_chain_massive(symbol, config)
@@ -190,8 +256,21 @@ def calculate_metrics(options_chain: pd.DataFrame, current_price: float) -> pd.D
     return options_chain
 
 
-def screen_options(options_df: pd.DataFrame, config: dict) -> pd.DataFrame:
-    """Apply screening criteria to filter options"""
+def screen_options(options_df: pd.DataFrame, config: dict, api_source: str = "massive") -> pd.DataFrame:
+    """
+    Apply screening criteria to filter options.
+    
+    For Alpaca API: Volume is fetched AFTER all other filters are applied
+    to minimize API calls (only fetch volume for filtered contracts).
+    
+    Args:
+        options_df: DataFrame with options data
+        config: Configuration dictionary with screening criteria
+        api_source: API source ("massive", "alpaca", or "yahoo")
+        
+    Returns:
+        Filtered DataFrame with options meeting all criteria
+    """
     if options_df.empty:
         return options_df
     
@@ -206,23 +285,44 @@ def screen_options(options_df: pd.DataFrame, config: dict) -> pd.DataFrame:
     # e.g., 20% probability = delta >= -0.20 (delta between -0.20 and 0)
     max_prob = criteria.get('max_assignment_probability', 20) / 100
     
-    # Apply filtering conditions
-    conditions = {
-        'volume': options_df['volume'] >= strategy['min_volume'],
-        'open_interest': options_df['open_interest'] >= strategy['min_open_interest'],
-        'delta': options_df['delta'] >= -max_prob,  # Delta between -max_prob and 0
-        'annualized_return': options_df['annualized_return'] >= criteria['min_annualized_return'],
-        'out_of_the_money': options_df['out_of_the_money']
-    }
+    # Step 1: Apply all NON-VOLUME filters first
+    # This allows us to minimize API calls for volume data (Alpaca)
+    non_volume_conditions = (
+        (options_df['open_interest'] >= strategy['min_open_interest']) &
+        (options_df['delta'] >= -max_prob) &
+        (options_df['annualized_return'] >= criteria['min_annualized_return']) &
+        (options_df['out_of_the_money'])
+    )
     
-    # Combine all conditions
-    filtered = options_df[
-        conditions['volume'] &
-        conditions['open_interest'] &
-        conditions['delta'] &
-        conditions['annualized_return'] &
-        conditions['out_of_the_money']
-    ]
+    filtered = options_df[non_volume_conditions].copy()
+    
+    if filtered.empty:
+        return filtered
+    
+    # Step 2: For Alpaca, fetch volume for filtered contracts only
+    # This is the optimization - we only fetch volume for contracts that pass other filters
+    is_alpaca = api_source.lower() == "alpaca"
+    has_volume_data = filtered['volume'].max() > 0
+    
+    if is_alpaca and not has_volume_data and 'contract_symbol' in filtered.columns:
+        print(f"  Fetching volume for {len(filtered)} filtered contracts from Alpaca...")
+        contract_symbols = filtered['contract_symbol'].tolist()
+        volumes = fetch_alpaca_volumes(contract_symbols)
+        
+        # Update volume column with fetched data
+        filtered['volume'] = filtered['contract_symbol'].map(volumes).fillna(0).astype(int)
+        has_volume_data = filtered['volume'].max() > 0
+    
+    # Step 3: Apply volume filter (now that we have volume data)
+    min_volume = strategy.get('min_volume', 0)
+    if has_volume_data and min_volume > 0:
+        filtered = filtered[filtered['volume'] >= min_volume]
+    elif not has_volume_data and min_volume > 0:
+        # If still no volume data and min_volume is required, log warning
+        print(f"  WARNING: Volume data not available, skipping volume filter (min_volume={min_volume})")
+    
+    if filtered.empty:
+        return filtered
     
     # Sort results
     sort_by = config['output']['sort_by']

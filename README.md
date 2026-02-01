@@ -814,8 +814,128 @@ DEBUG=true uvicorn app.main:app --reload
 
 ## Data Sources
 
-- **Massive.com** (Primary): Professional-grade Greeks from API - no local calculation required
-- **Yahoo Finance** (Fallback): Free data with Greeks calculated locally via Black-Scholes model
+### Massive.com (Primary)
+Professional-grade Greeks from API - no local calculation required.
+
+### Yahoo Finance (Fallback)
+Free data with Greeks calculated locally via Black-Scholes model.
+
+### Alpaca.markets (Alternative)
+Real-time options data via Algo Trader Plus subscription. The Alpaca integration uses multiple API endpoints to provide comprehensive options data.
+
+#### Alpaca Data Flow
+
+```
+Alpaca Snapshot API              Alpaca Historical APIs
+       │                                │
+       ▼                                ▼
+┌─────────────────┐            ┌─────────────────┐
+│ Quotes, Greeks  │            │ Option Bars     │──→ If volume > 0, use it
+│ IV, Open Int    │            │ (TimeFrame.Day) │
+│ (volume = 0)    │            └─────────────────┘
+└─────────────────┘                    │
+       │                               ▼ (if volume = 0)
+       │                       ┌─────────────────┐
+       │                       │ Option Trades   │──→ Sum trade.size
+       │                       │ (7-day lookback)│    for latest day
+       │                       └─────────────────┘
+       │                               │
+       ▼                               ▼
+┌─────────────────────────────────────────────────┐
+│           Final Options DataFrame                │
+│  (with volume from bars OR trades API)           │
+└─────────────────────────────────────────────────┘
+```
+
+#### How Alpaca Volume Data is Derived
+
+Alpaca's options snapshot API provides real-time quotes, Greeks, IV, and Open Interest, but **does not include volume data**. Volume must be fetched separately through historical data endpoints.
+
+The implementation uses a **two-step fallback approach**:
+
+**Step 1: Try Historical Bars API (Efficient Batch Request)**
+- Uses `OptionBarsRequest` with `TimeFrame.Day` to get daily OHLCV bars
+- Most efficient when market data is available
+- May return 0 volume when markets are closed (weekends/holidays)
+
+**Step 2: Fallback to Trades API (Sum Individual Trades)**
+- Only called for contracts where bars returned 0 volume
+- Uses 7-day lookback to ensure we capture the last trading day (even on weekends)
+- Sums `trade.size` for each individual trade
+- Returns the **most recent trading day's volume** (not cumulative)
+
+**Important Technical Detail:**
+The `TradeSet` object returned by `get_option_trades()` must be accessed via the `.data` attribute:
+
+| Access Method | Result |
+|--------------|--------|
+| `trades[symbol]` | ❌ Returns empty/None |
+| `trades.data.get(symbol)` | ✅ Returns trade list |
+
+#### Alpaca Volume Optimization
+
+Volume fetching is **deferred until after other filters** to minimize API calls:
+
+```
+1. Fetch options chain (snapshot) → ~200 contracts
+2. Apply non-volume filters (OI, Delta, Return, OTM) → ~50 contracts
+3. Fetch volume ONLY for remaining ~50 contracts ← Optimization
+4. Apply volume filter (min_volume) → Final results
+```
+
+This approach reduces API calls from potentially hundreds to just the filtered subset.
+
+#### Alpaca Option Pricing Logic
+
+The Alpaca client uses the following priority for determining option prices:
+
+**When Midpoint Pricing is ENABLED (Admin Setting):**
+| Priority | Price Source | Description |
+|----------|-------------|-------------|
+| 1st | Mid-point | `(bid + ask) / 2` - balanced estimate |
+| 2nd | Bid | If no ask available |
+| 3rd | Ask | If no bid available |
+| 4th | Last Trade | Fallback if no quote data |
+| 5th | Close Price | From Trading API contracts |
+
+**When Midpoint Pricing is DISABLED:**
+| Priority | Price Source | Description |
+|----------|-------------|-------------|
+| 1st | **Bid** | What you'd actually receive when selling |
+| 2nd | Ask | If no bid available |
+| 3rd | Last Trade | Fallback if no quote data |
+| 4th | Close Price | From Trading API contracts |
+
+**Why Bid Price for Selling Puts?**
+
+When midpoint is disabled, the system uses the **bid price** because:
+- The bid represents what market makers are willing to pay you right now
+- This provides a **conservative, realistic estimate** of the premium you'd receive
+- Last trade prices can be stale or executed at different market conditions
+- Annualized return calculations based on bid are more achievable in practice
+
+**Comparison with Massive API:**
+
+| API | Price Used | Behavior |
+|-----|-----------|----------|
+| **Alpaca (midpoint off)** | Bid price | Conservative - shows realistic fill price |
+| **Alpaca (midpoint on)** | (Bid + Ask) / 2 | Balanced estimate |
+| **Massive** | Last trade price | May be stale, potentially inflated returns |
+
+Example for IREN $43 Put (02/20 expiry):
+- Alpaca Bid: **$2.02** → 85.73% annualized return
+- Massive Last: **$2.44** → 103.56% annualized return
+- The $0.42 difference significantly impacts return calculations
+
+#### Alpaca API Endpoints Used
+
+| Endpoint | Data Provided | Notes |
+|----------|--------------|-------|
+| `get_option_chain` (Data API) | Quotes, Greeks, IV | Real-time snapshots |
+| `get_option_contracts` (Trading API) | Open Interest, Contract metadata | Paginated results |
+| `get_option_bars` (Data API) | OHLCV including Volume | Daily bars, may be empty on weekends |
+| `get_option_trades` (Data API) | Individual trades | Fallback for volume calculation |
+| `get_stock_latest_trade` (Data API) | Current stock price | For underlying price |
 
 ---
 

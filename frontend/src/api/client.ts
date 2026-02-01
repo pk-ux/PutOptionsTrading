@@ -18,6 +18,8 @@ import type {
   TradeIdeaListResponse,
   TradeIdeaCreateRequest,
   CacheSettings,
+  ApiProviderSettings,
+  MarketSettings,
 } from '@/types';
 
 // Get API base URL from environment or default to relative path
@@ -256,6 +258,30 @@ export const apiClient = {
   // Update cache settings (admin only)
   async updateCacheSettings(settings: Partial<CacheSettings>): Promise<CacheSettings> {
     const response = await api.put('/api/v1/admin/cache-settings', settings);
+    return response.data;
+  },
+
+  // Get API provider settings (admin only)
+  async getApiProviderSettings(): Promise<ApiProviderSettings> {
+    const response = await api.get('/api/v1/admin/api-provider');
+    return response.data;
+  },
+
+  // Update API provider settings (admin only)
+  async updateApiProviderSettings(settings: Partial<ApiProviderSettings>): Promise<ApiProviderSettings> {
+    const response = await api.put('/api/v1/admin/api-provider', settings);
+    return response.data;
+  },
+
+  // Get market settings (admin only)
+  async getMarketSettings(): Promise<MarketSettings> {
+    const response = await api.get('/api/v1/admin/market-settings');
+    return response.data;
+  },
+
+  // Update market settings (admin only)
+  async updateMarketSettings(settings: { risk_free_rate: number }): Promise<MarketSettings> {
+    const response = await api.put('/api/v1/admin/market-settings', settings);
     return response.data;
   },
 };

@@ -6,6 +6,10 @@ Includes caching layer for:
 - Stock prices (1 minute TTL)
 - Options chains (5 minutes TTL)
 - News (15 minutes TTL)
+
+Supports multiple API providers:
+- Massive.com API (15-minute delayed options data)
+- Alpaca API (real-time options data with bid/ask quotes)
 """
 
 from typing import Dict, List, Any, Tuple
@@ -14,13 +18,16 @@ from typing import Dict, List, Any, Tuple
 from .options_screener import (
     get_stock_price_massive,
     get_stock_price_yahoo,
+    get_stock_price_alpaca,
     get_options_chain_massive,
     get_options_chain_yahoo,
+    get_options_chain_alpaca,
     calculate_metrics,
     screen_options as filter_options,
     format_output,
 )
 from .massive_api_client import get_massive_client
+from .alpaca_api_client import get_alpaca_client
 from ..core.cache import (
     get_cached_stock_price,
     set_cached_stock_price,
@@ -30,6 +37,7 @@ from ..core.cache import (
     set_cached_news,
     get_config_hash,
 )
+from ..core.api_provider import get_active_provider, get_use_midpoint_pricing
 
 SCREENER_AVAILABLE = True
 
@@ -102,6 +110,7 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     """
     Screen a single symbol for put options.
     Uses caching to reduce external API calls.
+    Routes requests to the active API provider (Massive or Alpaca).
     
     Returns:
         Tuple of (list of option dicts, used_yahoo bool)
@@ -110,20 +119,26 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     
     used_yahoo = False
     config_hash = get_config_hash(config)
+    active_provider = get_active_provider()
     
     # Check cache for stock price first
     current_price = get_cached_stock_price(symbol)
     if current_price is not None:
         print(f"[CACHE HIT] Price for {symbol}: ${current_price}")
     else:
-        # Get price from API (Massive first, Yahoo fallback)
-        current_price = get_stock_price_massive(symbol)
+        # Get price from active API provider
+        if active_provider == "alpaca":
+            current_price = get_stock_price_alpaca(symbol)
+        else:
+            current_price = get_stock_price_massive(symbol)
+        
+        # Yahoo fallback if primary provider fails
         if current_price is None:
             current_price = get_stock_price_yahoo(symbol)
             used_yahoo = True
         
         if current_price is not None:
-            # Cache the price for 1 minute
+            # Cache the price
             set_cached_stock_price(symbol, current_price)
             print(f"[CACHE SET] Price for {symbol}: ${current_price}")
     
@@ -131,21 +146,28 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
         return [], used_yahoo
     
     # Check cache for options chain
-    cached_options = get_cached_options_chain(symbol, config_hash)
+    # Include provider in cache key to separate Massive vs Alpaca data
+    provider_config_hash = f"{active_provider}_{config_hash}"
+    cached_options = get_cached_options_chain(symbol, provider_config_hash)
     if cached_options is not None:
         print(f"[CACHE HIT] Options chain for {symbol} ({len(cached_options)} options)")
         options = pd.DataFrame(cached_options)
     else:
-        # Get options chain from API (Massive first, Yahoo fallback)
-        options = get_options_chain_massive(symbol, config)
+        # Get options chain from active API provider
+        if active_provider == "alpaca":
+            options = get_options_chain_alpaca(symbol, config)
+        else:
+            options = get_options_chain_massive(symbol, config)
+        
+        # Yahoo fallback if primary provider fails
         if options.empty:
             options = get_options_chain_yahoo(symbol, config)
             if not options.empty:
                 used_yahoo = True
         
         if not options.empty:
-            # Cache the raw options data for 5 minutes
-            set_cached_options_chain(symbol, config_hash, options.to_dict(orient='records'))
+            # Cache the raw options data
+            set_cached_options_chain(symbol, provider_config_hash, options.to_dict(orient='records'))
             print(f"[CACHE SET] Options chain for {symbol} ({len(options)} options)")
     
     if options.empty:
@@ -153,7 +175,8 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     
     # Calculate metrics and filter (always done fresh since these depend on current price)
     options = calculate_metrics(options, current_price)
-    filtered = filter_options(options, config)
+    # Pass api_source to enable volume fetching for Alpaca after other filters
+    filtered = filter_options(options, config, api_source=active_provider)
     formatted = format_output(filtered, current_price)
     
     if formatted.empty:
@@ -166,6 +189,7 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
 def get_news(symbol: str, limit: int = 10, max_age_days: int = 7) -> List[Dict[str, Any]]:
     """
     Get news for a symbol with caching.
+    Routes to active API provider (Massive or Alpaca).
     
     Args:
         symbol: Stock symbol
@@ -175,23 +199,36 @@ def get_news(symbol: str, limit: int = 10, max_age_days: int = 7) -> List[Dict[s
     Returns:
         List of news item dicts
     """
-    # Check cache first
+    active_provider = get_active_provider()
+    
+    # Check cache first (use provider-specific cache key)
     cached_news = get_cached_news(symbol)
     if cached_news is not None:
         print(f"[CACHE HIT] News for {symbol} ({len(cached_news)} items)")
         return cached_news[:limit]  # Respect limit even from cache
     
-    massive_client = get_massive_client()
-    if not massive_client:
-        return []
+    news = []
     
-    try:
-        news = massive_client.get_ticker_news(symbol, limit=limit, max_age_days=max_age_days)
-        if news:
-            # Cache news for 15 minutes
-            set_cached_news(symbol, news)
-            print(f"[CACHE SET] News for {symbol} ({len(news)} items)")
-        return news
-    except Exception as e:
-        print(f"Error fetching news for {symbol}: {e}")
-        return []
+    if active_provider == "alpaca":
+        # Use Alpaca for news
+        alpaca_client = get_alpaca_client(use_midpoint_pricing=get_use_midpoint_pricing())
+        if alpaca_client:
+            try:
+                news = alpaca_client.get_ticker_news(symbol, limit=limit, max_age_days=max_age_days)
+            except Exception as e:
+                print(f"Error fetching Alpaca news for {symbol}: {e}")
+    else:
+        # Use Massive for news
+        massive_client = get_massive_client()
+        if massive_client:
+            try:
+                news = massive_client.get_ticker_news(symbol, limit=limit, max_age_days=max_age_days)
+            except Exception as e:
+                print(f"Error fetching Massive news for {symbol}: {e}")
+    
+    if news:
+        # Cache news
+        set_cached_news(symbol, news)
+        print(f"[CACHE SET] News for {symbol} ({len(news)} items)")
+    
+    return news

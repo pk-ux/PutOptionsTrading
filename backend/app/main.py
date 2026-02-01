@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
 from .core.database import init_db
 from .core.cache import get_cache, load_cache_settings_from_db
+from .core.api_provider import load_api_provider_settings_from_db
+from .core.market_settings import load_market_settings_from_db
 from .api.v1.router import api_router
 
 settings = get_settings()
@@ -25,6 +27,12 @@ async def lifespan(app: FastAPI):
     
     # Load cache settings from database into memory
     load_cache_settings_from_db()
+    
+    # Load API provider settings from database into memory
+    load_api_provider_settings_from_db()
+    
+    # Load market settings (risk-free rate) from database into memory
+    load_market_settings_from_db()
     
     # Initialize cache connection
     cache = get_cache()

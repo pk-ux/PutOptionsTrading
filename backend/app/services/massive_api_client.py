@@ -5,17 +5,17 @@ Massive.com API Client - Wrapper for options screener integration
 Data sources:
 - Stock prices: Yahoo Finance (real-time)
 - Options prices: Massive.com API (last_trade.price, fallback to day.close)
-- Options Greeks: Massive.com API (delta, gamma, theta, vega, IV - no local calculation)
+- Options Greeks: Massive.com API (delta, gamma, theta, vega, IV), fallback to Black-Scholes
 - Volume & Open Interest: Massive.com API
 
 Note: Options data is 15-minute delayed per Massive.com plan.
 """
 
-import os
+import traceback
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List, Optional
 
 from ..core.config import get_settings
 
@@ -27,7 +27,8 @@ class MassiveAPIClient:
     Data sources:
     - Stock prices: Yahoo Finance (real-time)
     - Options prices: Massive.com API (last_trade.price, fallback to day.close)
-    - Options Greeks: Massive.com API (delta, gamma, theta, vega, IV)
+    - Options Greeks: Massive.com API (delta, gamma, theta, vega, IV), 
+      with fallback to Black-Scholes calculation using shared greeks_calculator
     - Volume & Open Interest: Massive.com API
     
     Note: Options data is 15-minute delayed per Massive.com plan.
@@ -113,18 +114,24 @@ class MassiveAPIClient:
         
         All options data comes from Massive.com API (15-minute delayed):
         - Prices: last_trade.price (primary), day.close (fallback)
-        - Greeks: delta, gamma, theta, vega (no local calculation needed)
-        - IV, Volume, Open Interest
+        - Greeks: API-provided, with Black-Scholes fallback when unavailable
+        - IV: API-provided, with Black-Scholes calculation fallback
+        - Volume, Open Interest
         
         Args:
             symbol: Stock ticker symbol
             config: Configuration dictionary with options_strategy settings
             
         Returns:
-            DataFrame with options data including prices and API-provided Greeks
+            DataFrame with options data including prices and Greeks
         """
         try:
-            print(f"Fetching options chain for {symbol} from Massive.com (with API Greeks)...")
+            from .greeks_calculator import (
+                calculate_all_greeks,
+                calculate_implied_volatility
+            )
+            
+            print(f"Fetching options chain for {symbol} from Massive.com...")
             
             # Extract DTE range from config
             max_dte = config['options_strategy']['max_dte']
@@ -144,13 +151,24 @@ class MassiveAPIClient:
                 "contract_type": "put"  # Only get PUT options
             }
             
-            # Fetch options chain from Massive - gets Greeks and prices without calculation!
+            # Get stock price for Black-Scholes fallback calculations
+            stock_price = self.get_stock_price(symbol)
+            if stock_price is None:
+                print(f"  WARNING: Could not get stock price for {symbol}, Greeks fallback may fail")
+            
+            # Fetch options chain from Massive
             options_data = []
-            options_count = 0
-            skipped_no_greeks = 0
+            stats = {
+                'total': 0,
+                'greeks_from_api': 0,
+                'greeks_calculated': 0,
+                'iv_from_api': 0,
+                'iv_calculated': 0,
+                'skipped_no_price': 0,
+            }
             
             for option in self.client.list_snapshot_options_chain(symbol, params=params):
-                options_count += 1
+                stats['total'] += 1
                 
                 # Extract option details
                 details = option.details if hasattr(option, 'details') else None
@@ -164,40 +182,19 @@ class MassiveAPIClient:
                 if strike is None or expiration is None:
                     continue
                 
+                strike = float(strike)
+                
                 # Calculate DTE
                 try:
                     exp_date = datetime.strptime(str(expiration), '%Y-%m-%d').date()
                     dte = (exp_date - today).days
-                except:
+                except (ValueError, TypeError):
                     continue
                 
-                # Extract Greeks directly from API (NO CALCULATION!)
-                greeks = option.greeks if hasattr(option, 'greeks') else None
-                if not greeks or getattr(greeks, 'delta', None) is None:
-                    skipped_no_greeks += 1
-                    continue  # Skip options without Greeks
+                # Time to expiry in years (for Black-Scholes)
+                T = dte / 365.0
                 
-                delta = float(greeks.delta)
-                gamma = float(greeks.gamma) if greeks.gamma else 0
-                theta = float(greeks.theta) if greeks.theta else 0
-                vega = float(greeks.vega) if greeks.vega else 0
-                rho = float(greeks.rho) if getattr(greeks, 'rho', None) else 0
-                
-                # Get implied volatility from API
-                iv = getattr(option, 'implied_volatility', None)
-                if iv is None:
-                    continue  # Need IV for screening
-                iv = float(iv)
-                
-                # Get volume and open interest from Massive
-                open_interest = getattr(option, 'open_interest', 0) or 0
-                
-                volume = 0
-                if hasattr(option, 'day') and option.day:
-                    volume = getattr(option.day, 'volume', 0) or 0
-                
-                # Extract price from Massive API
-                # Priority: last_trade.price > day.close (quotes not available on this plan)
+                # ---------- PRICE EXTRACTION ----------
                 last_trade = getattr(option, 'last_trade', None)
                 day_data = getattr(option, 'day', None)
                 
@@ -208,34 +205,91 @@ class MassiveAPIClient:
                 if last_trade and getattr(last_trade, 'price', None):
                     option_price = float(last_trade.price)
                     price_source = 'last_trade'
-                # Fallback to daily close price (for options that haven't traded recently)
+                # Fallback to daily close price
                 elif day_data:
                     close_price = getattr(day_data, 'close', None)
                     if close_price and close_price > 0:
                         option_price = float(close_price)
                         price_source = 'day_close'
                 
-                # Skip options without valid price (can't calculate returns)
+                # Skip options without valid price
                 if option_price is None or option_price <= 0:
+                    stats['skipped_no_price'] += 1
                     continue
                 
-                # Build option row with all data from Massive API
+                # ---------- IMPLIED VOLATILITY ----------
+                iv = getattr(option, 'implied_volatility', None)
+                if iv is not None:
+                    iv = float(iv)
+                    stats['iv_from_api'] += 1
+                elif stock_price and T > 0:
+                    # Calculate IV using Black-Scholes inverse
+                    iv = calculate_implied_volatility(
+                        option_price=option_price,
+                        S=stock_price,
+                        K=strike,
+                        T=T,
+                        option_type='put'
+                    )
+                    if iv > 0:
+                        stats['iv_calculated'] += 1
+                    else:
+                        iv = 0.3  # Default IV if calculation fails
+                else:
+                    iv = 0.3  # Default IV
+                
+                # ---------- GREEKS ----------
+                greeks_data = None
+                api_greeks = option.greeks if hasattr(option, 'greeks') else None
+                
+                # Try to get from API first
+                if api_greeks and getattr(api_greeks, 'delta', None) is not None:
+                    greeks_data = {
+                        'delta': float(api_greeks.delta),
+                        'gamma': float(api_greeks.gamma) if api_greeks.gamma else 0,
+                        'theta': float(api_greeks.theta) if api_greeks.theta else 0,
+                        'vega': float(api_greeks.vega) if api_greeks.vega else 0,
+                        'rho': float(api_greeks.rho) if getattr(api_greeks, 'rho', None) else 0,
+                    }
+                    stats['greeks_from_api'] += 1
+                
+                # Fallback: Calculate Greeks using Black-Scholes
+                if greeks_data is None and stock_price and T > 0 and iv > 0:
+                    greeks_data = calculate_all_greeks(
+                        S=stock_price,
+                        K=strike,
+                        T=T,
+                        sigma=iv,
+                        option_type='put'
+                    )
+                    stats['greeks_calculated'] += 1
+                
+                # Skip if we couldn't get Greeks
+                if greeks_data is None:
+                    continue
+                
+                # Get volume and open interest from Massive
+                open_interest = getattr(option, 'open_interest', 0) or 0
+                volume = 0
+                if hasattr(option, 'day') and option.day:
+                    volume = getattr(option.day, 'volume', 0) or 0
+                
+                # ---------- BUILD OPTION ROW ----------
                 option_row = {
                     'symbol': symbol,
-                    'strike': float(strike),
+                    'strike': strike,
                     'expiry': str(expiration),
                     'dte': dte,
                     'volume': int(volume),
                     'open_interest': int(open_interest),
-                    'openInterest': int(open_interest),
-                    'lastPrice': option_price,     # From Massive API (last_trade or mid-price)
-                    'price_source': price_source,  # Track where price came from
-                    'impliedVolatility': iv,       # From Massive API
-                    'delta': delta,                # From Massive API - NOT calculated!
-                    'gamma': gamma,                # From Massive API
-                    'theta': theta,                # From Massive API
-                    'vega': vega,                  # From Massive API
-                    'rho': rho,                    # From Massive API
+                    'lastPrice': option_price,
+                    'price_source': price_source,
+                    'impliedVolatility': iv,
+                    'delta': greeks_data['delta'],
+                    'gamma': greeks_data['gamma'],
+                    'theta': greeks_data['theta'],
+                    'vega': greeks_data['vega'],
+                    'rho': greeks_data['rho'],
                     'contract_symbol': ticker
                 }
                 
@@ -246,18 +300,22 @@ class MassiveAPIClient:
                 return pd.DataFrame()
             
             df = pd.DataFrame(options_data)
-            print(f"  Retrieved {len(df)} PUT options with prices and Greeks from Massive")
-            print(f"  (Scanned: {options_count}, Skipped without Greeks: {skipped_no_greeks})")
+            
+            # Print statistics
+            print(f"  Retrieved {len(df)} PUT options for {symbol}")
+            print(f"  Stats: Greeks (API: {stats['greeks_from_api']}, Calc: {stats['greeks_calculated']}), "
+                  f"IV (API: {stats['iv_from_api']}, Calc: {stats['iv_calculated']}), "
+                  f"Skipped (no price): {stats['skipped_no_price']}")
+            
             return df
                 
         except Exception as e:
             print(f"ERROR getting Massive.com options chain for {symbol}: {str(e)}")
-            import traceback
             traceback.print_exc()
             return pd.DataFrame()
 
 
-    def get_ticker_news(self, symbol, limit=10, max_age_days=7):
+    def get_ticker_news(self, symbol: str, limit: int = 10, max_age_days: int = 7) -> List[Dict[str, Any]]:
         """
         Fetch latest news for a ticker from Massive.com API.
         
@@ -273,7 +331,6 @@ class MassiveAPIClient:
             return []
         
         try:
-            from datetime import datetime, timedelta, timezone
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
             
             news_items = []
@@ -294,7 +351,7 @@ class MassiveAPIClient:
                     
                     # Format date for display (e.g., "Jan 20")
                     date_display = published_date.strftime("%b %d")
-                except:
+                except (ValueError, TypeError, AttributeError):
                     date_display = ""
                 
                 news_items.append({
@@ -317,6 +374,7 @@ class MassiveAPIClient:
 # Global instance for easy import
 massive_client: Optional[MassiveAPIClient] = None
 
+
 def get_massive_client() -> Optional[MassiveAPIClient]:
     """Get or create the Massive API client singleton."""
     global massive_client
@@ -327,3 +385,9 @@ def get_massive_client() -> Optional[MassiveAPIClient]:
             print(f"Failed to initialize Massive.com API client: {str(e)}")
             massive_client = None
     return massive_client
+
+
+def reset_massive_client():
+    """Reset the Massive client singleton (useful when settings change)."""
+    global massive_client
+    massive_client = None

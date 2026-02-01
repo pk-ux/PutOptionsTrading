@@ -219,7 +219,114 @@ After running the migration, admins can control caching via the Admin Dashboard 
 
 After running the migration, admins can reorder system filters and trade ideas via drag-and-drop in the Admin Dashboard.
 
-### Step 9: (Optional) Cleanup Old Columns
+### Step 10: Add API Provider Settings Table (Alpaca Integration)
+
+If you're adding the Alpaca API integration feature, run these SQL commands:
+
+**Railway PostgreSQL (using public URL):**
+```bash
+cd backend
+DATABASE_URL="postgresql://postgres:password@host.railway.app:port/railway" python -c "
+from sqlalchemy import create_engine, text
+import os
+
+engine = create_engine(os.getenv('DATABASE_URL'))
+with engine.connect() as conn:
+    # Create api_provider_settings table
+    conn.execute(text('''
+        CREATE TABLE IF NOT EXISTS api_provider_settings (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            active_provider VARCHAR(20) NOT NULL DEFAULT 'massive',
+            use_midpoint_pricing BOOLEAN NOT NULL DEFAULT true,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    '''))
+    
+    # Insert default row if not exists
+    conn.execute(text('''
+        INSERT INTO api_provider_settings (id, active_provider, use_midpoint_pricing)
+        VALUES (1, 'massive', true)
+        ON CONFLICT (id) DO NOTHING
+    '''))
+    
+    conn.commit()
+    print('Successfully created api_provider_settings table')
+"
+```
+
+Or directly in psql:
+```sql
+CREATE TABLE IF NOT EXISTS api_provider_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    active_provider VARCHAR(20) NOT NULL DEFAULT 'massive',
+    use_midpoint_pricing BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO api_provider_settings (id, active_provider, use_midpoint_pricing)
+VALUES (1, 'massive', true)
+ON CONFLICT (id) DO NOTHING;
+```
+
+After running the migration, configure your Alpaca API keys in the environment:
+
+```bash
+ALPACA_API_KEY=your_alpaca_api_key
+ALPACA_SECRET_KEY=your_alpaca_secret_key
+```
+
+Then admins can switch between Massive and Alpaca providers via the Admin Dashboard under "API Provider".
+
+### Step 11: Add Market Settings Table (Risk-Free Rate)
+
+If you're adding the configurable risk-free rate feature for Greeks calculations, run these SQL commands:
+
+**Railway PostgreSQL (using public URL):**
+```bash
+cd backend
+DATABASE_URL="postgresql://postgres:password@host.railway.app:port/railway" python -c "
+from sqlalchemy import create_engine, text
+import os
+
+engine = create_engine(os.getenv('DATABASE_URL'))
+with engine.connect() as conn:
+    # Create market_settings table
+    conn.execute(text('''
+        CREATE TABLE IF NOT EXISTS market_settings (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            risk_free_rate FLOAT NOT NULL DEFAULT 0.0367,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    '''))
+    
+    # Insert default row if not exists
+    conn.execute(text('''
+        INSERT INTO market_settings (id, risk_free_rate)
+        VALUES (1, 0.0367)
+        ON CONFLICT (id) DO NOTHING
+    '''))
+    
+    conn.commit()
+    print('Successfully created market_settings table')
+"
+```
+
+Or directly in psql:
+```sql
+CREATE TABLE IF NOT EXISTS market_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    risk_free_rate FLOAT NOT NULL DEFAULT 0.0367,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO market_settings (id, risk_free_rate)
+VALUES (1, 0.0367)
+ON CONFLICT (id) DO NOTHING;
+```
+
+After running the migration, admins can update the risk-free rate via the Admin Dashboard under "Market Settings". A link to the FRED 3-Month Treasury Rate is provided for reference.
+
+### Step 13: (Optional) Cleanup Old Columns
 
 After confirming everything works, you can optionally remove the old columns from `user_settings`. This is NOT required and can be done later.
 
@@ -306,6 +413,12 @@ If issues occur:
 | `/api/v1/admin/trade-ideas/{id}` | DELETE | Delete system trade idea |
 | `/api/v1/admin/filters/reorder` | PUT | Reorder system filters (admin) |
 | `/api/v1/admin/trade-ideas/reorder` | PUT | Reorder system trade ideas (admin) |
+| `/api/v1/admin/cache-settings` | GET | Get cache settings (admin) |
+| `/api/v1/admin/cache-settings` | PUT | Update cache settings (admin) |
+| `/api/v1/admin/api-provider` | GET | Get API provider settings (admin) |
+| `/api/v1/admin/api-provider` | PUT | Update API provider settings (admin) |
+| `/api/v1/admin/market-settings` | GET | Get market settings (admin) |
+| `/api/v1/admin/market-settings` | PUT | Update market settings (admin) |
 
 ### Modified Endpoints
 

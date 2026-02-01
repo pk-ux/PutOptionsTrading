@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # External APIs
     MASSIVE_API_KEY: Optional[str] = None
     
+    # Alpaca API (Algo Trader Plus required for real-time options)
+    ALPACA_API_KEY: Optional[str] = None
+    ALPACA_SECRET_KEY: Optional[str] = None
+    
     # Redis Cache (optional - falls back to in-memory if not set)
     REDIS_URL: Optional[str] = None
     
