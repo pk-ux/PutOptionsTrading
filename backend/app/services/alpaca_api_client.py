@@ -392,6 +392,78 @@ class AlpacaAPIClient:
                 'error': f'Could not get price for {symbol}'
             }
     
+    def get_stock_price_with_change(self, symbol: str) -> Optional[Dict[str, float]]:
+        """
+        Get current stock price with percent change from previous close.
+        
+        Uses stock snapshot to get daily_bar and previous_daily_bar for calculation.
+        
+        Args:
+            symbol: Stock ticker symbol (e.g., 'AAPL')
+            
+        Returns:
+            Dictionary with price, previous_close, and change_percent, or None if unavailable
+        """
+        try:
+            from alpaca.data.requests import StockSnapshotRequest
+            
+            print(f"Fetching price with change for {symbol} from Alpaca (snapshot)...")
+            
+            # Get stock snapshot which includes daily_bar and previous_daily_bar
+            request = StockSnapshotRequest(symbol_or_symbols=symbol)
+            snapshots = self.stock_client.get_stock_snapshot(request)
+            
+            if symbol not in snapshots:
+                print(f"WARNING: No snapshot data for {symbol}")
+                # Fallback to basic price without change
+                price = self.get_stock_price(symbol)
+                if price:
+                    return {'price': price, 'previous_close': None, 'change_percent': None}
+                return None
+            
+            snapshot = snapshots[symbol]
+            
+            # Get current price from latest trade or daily bar
+            current_price = None
+            if snapshot.latest_trade and snapshot.latest_trade.price:
+                current_price = float(snapshot.latest_trade.price)
+            elif snapshot.daily_bar and snapshot.daily_bar.close:
+                current_price = float(snapshot.daily_bar.close)
+            
+            if not current_price or current_price <= 0:
+                print(f"WARNING: Could not get current price from snapshot for {symbol}")
+                return None
+            
+            # Get previous close from previous_daily_bar
+            previous_close = None
+            if snapshot.previous_daily_bar and snapshot.previous_daily_bar.close:
+                previous_close = float(snapshot.previous_daily_bar.close)
+            
+            # Calculate percent change
+            change_percent = None
+            if previous_close and previous_close > 0:
+                change_percent = ((current_price - previous_close) / previous_close) * 100
+                change_percent = round(change_percent, 2)
+            
+            result = {
+                'price': round(current_price, 2),
+                'previous_close': round(previous_close, 2) if previous_close else None,
+                'change_percent': change_percent
+            }
+            
+            print(f"Alpaca price with change for {symbol}: ${result['price']:.2f} ({'+' if change_percent and change_percent >= 0 else ''}{change_percent:.2f}%)" if change_percent is not None else f"Alpaca price for {symbol}: ${result['price']:.2f} (no previous close)")
+            
+            return result
+            
+        except Exception as e:
+            print(f"ERROR getting Alpaca price with change for {symbol}: {str(e)}")
+            traceback.print_exc()
+            # Fallback to basic price
+            price = self.get_stock_price(symbol)
+            if price:
+                return {'price': price, 'previous_close': None, 'change_percent': None}
+            return None
+    
     def get_options_chain(self, symbol: str, config: Dict[str, Any]) -> pd.DataFrame:
         """
         Get options chain with prices and Greeks from Alpaca API.

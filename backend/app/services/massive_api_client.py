@@ -107,6 +107,56 @@ class MassiveAPIClient:
                 'error': f'Could not get price for {symbol}'
             }
     
+    def get_stock_price_with_change(self, symbol: str) -> Optional[Dict[str, float]]:
+        """
+        Get current stock price with percent change from previous close.
+        
+        Uses Yahoo Finance which provides regularMarketChangePercent directly.
+        
+        Args:
+            symbol: Stock ticker symbol (e.g., 'AAPL')
+            
+        Returns:
+            Dictionary with price, previous_close, and change_percent, or None if unavailable
+        """
+        try:
+            print(f"Fetching price with change for {symbol} from Yahoo Finance...")
+            stock = yf.Ticker(symbol)
+            info = stock.info
+            
+            current_price = info.get('regularMarketPrice', info.get('currentPrice'))
+            previous_close = info.get('regularMarketPreviousClose')
+            # Yahoo provides change_percent directly, or we can calculate it
+            change_percent = info.get('regularMarketChangePercent')
+            
+            if not current_price or current_price <= 0:
+                print(f"WARNING: Could not get current price for {symbol}")
+                return None
+            
+            # Calculate change_percent if not provided but we have previous_close
+            if change_percent is None and previous_close and previous_close > 0:
+                change_percent = ((current_price - previous_close) / previous_close) * 100
+            
+            result = {
+                'price': round(current_price, 2),
+                'previous_close': round(previous_close, 2) if previous_close else None,
+                'change_percent': round(change_percent, 2) if change_percent is not None else None
+            }
+            
+            if change_percent is not None:
+                print(f"Yahoo price with change for {symbol}: ${result['price']:.2f} ({'+' if change_percent >= 0 else ''}{change_percent:.2f}%)")
+            else:
+                print(f"Yahoo price for {symbol}: ${result['price']:.2f} (no change data)")
+            
+            return result
+            
+        except Exception as e:
+            print(f"ERROR getting Yahoo price with change for {symbol}: {str(e)}")
+            # Fallback to basic price
+            price = self.get_stock_price(symbol)
+            if price:
+                return {'price': price, 'previous_close': None, 'change_percent': None}
+            return None
     
     def get_options_chain(self, symbol: str, config: Dict[str, Any]) -> pd.DataFrame:
         """

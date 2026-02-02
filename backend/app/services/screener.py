@@ -19,6 +19,9 @@ from .options_screener import (
     get_stock_price_massive,
     get_stock_price_yahoo,
     get_stock_price_alpaca,
+    get_stock_price_with_change_massive,
+    get_stock_price_with_change_yahoo,
+    get_stock_price_with_change_alpaca,
     get_options_chain_massive,
     get_options_chain_yahoo,
     get_options_chain_alpaca,
@@ -122,25 +125,39 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     active_provider = get_active_provider()
     
     # Check cache for stock price first
-    current_price = get_cached_stock_price(symbol)
-    if current_price is not None:
-        print(f"[CACHE HIT] Price for {symbol}: ${current_price}")
-    else:
-        # Get price from active API provider
-        if active_provider == "alpaca":
-            current_price = get_stock_price_alpaca(symbol)
+    cached_price_data = get_cached_stock_price(symbol)
+    current_price = None
+    price_change_percent = None
+    
+    if cached_price_data is not None:
+        # Handle both old format (float) and new format (dict)
+        if isinstance(cached_price_data, dict):
+            current_price = cached_price_data.get('price')
+            price_change_percent = cached_price_data.get('change_percent')
+            print(f"[CACHE HIT] Price for {symbol}: ${current_price}" + (f" ({'+' if price_change_percent and price_change_percent >= 0 else ''}{price_change_percent:.2f}%)" if price_change_percent is not None else ""))
         else:
-            current_price = get_stock_price_massive(symbol)
+            current_price = cached_price_data
+            print(f"[CACHE HIT] Price for {symbol}: ${current_price}")
+    else:
+        # Get price with change from active API provider
+        price_data = None
+        if active_provider == "alpaca":
+            price_data = get_stock_price_with_change_alpaca(symbol)
+        else:
+            price_data = get_stock_price_with_change_massive(symbol)
         
         # Yahoo fallback if primary provider fails
-        if current_price is None:
-            current_price = get_stock_price_yahoo(symbol)
-            used_yahoo = True
+        if price_data is None:
+            price_data = get_stock_price_with_change_yahoo(symbol)
+            if price_data:
+                used_yahoo = True
         
-        if current_price is not None:
-            # Cache the price
-            set_cached_stock_price(symbol, current_price)
-            print(f"[CACHE SET] Price for {symbol}: ${current_price}")
+        if price_data is not None:
+            current_price = price_data.get('price')
+            price_change_percent = price_data.get('change_percent')
+            # Cache the full price data
+            set_cached_stock_price(symbol, price_data)
+            print(f"[CACHE SET] Price for {symbol}: ${current_price}" + (f" ({'+' if price_change_percent and price_change_percent >= 0 else ''}{price_change_percent:.2f}%)" if price_change_percent is not None else ""))
     
     if current_price is None:
         return [], used_yahoo
@@ -182,8 +199,12 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     if formatted.empty:
         return [], used_yahoo
     
-    # Convert DataFrame to list of dicts
-    return formatted.to_dict(orient='records'), used_yahoo
+    # Convert DataFrame to list of dicts and add price_change_percent to each row
+    results = formatted.to_dict(orient='records')
+    for row in results:
+        row['price_change_percent'] = price_change_percent
+    
+    return results, used_yahoo
 
 
 def get_news(symbol: str, limit: int = 10, max_age_days: int = 7) -> List[Dict[str, Any]]:

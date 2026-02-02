@@ -34,6 +34,27 @@ function getReturnBgClass(value: number): string {
   return 'bg-blue-500/20 border-blue-500/30';
 }
 
+function formatPriceWithChange(price: number | undefined, changePercent?: number): JSX.Element {
+  if (price === undefined || price === null) return <span>-</span>;
+  
+  const priceStr = `$${price.toFixed(2)}`;
+  
+  if (changePercent === undefined || changePercent === null) {
+    return <span>{priceStr}</span>;
+  }
+  
+  const isPositive = changePercent >= 0;
+  const changeClass = isPositive ? 'text-green-400' : 'text-red-400';
+  const changeStr = `(${isPositive ? '+' : ''}${changePercent.toFixed(1)}%)`;
+  
+  return (
+    <span className="whitespace-nowrap">
+      {priceStr}{' '}
+      <span className={changeClass}>{changeStr}</span>
+    </span>
+  );
+}
+
 // Mobile card component for a single result
 function ResultCard({ row, index }: { row: OptionResult; index: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -52,7 +73,7 @@ function ResultCard({ row, index }: { row: OptionResult; index: number }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <span className="text-lg font-bold text-white">{row.symbol}</span>
-          <span className="text-gray-400">{formatCurrency(row.current_price)}</span>
+          <span className="text-gray-400 text-sm">{formatPriceWithChange(row.current_price, row.price_change_percent)}</span>
         </div>
         <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${getReturnBgClass(row.annualized_return)} ${getReturnClass(row.annualized_return)}`}>
           {formatPercent(row.annualized_return)}
@@ -101,7 +122,7 @@ function ResultCard({ row, index }: { row: OptionResult; index: number }) {
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mt-3 pt-3 border-t border-white/5">
           <div className="flex justify-between">
             <span className="text-gray-500">Daily Decay:</span>
-            <span className="text-white">{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(4)}` : '-'}</span>
+            <span className="text-white">{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(3)}` : '-'}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Volume:</span>
@@ -152,7 +173,7 @@ function DesktopTable({ data }: { data: OptionResult[] }) {
             return (
               <tr key={`${row.symbol}-${row.strike}-${row.expiry}-${index}`}>
                 <td className="font-medium">{row.symbol}</td>
-                <td>{formatCurrency(row.current_price)}</td>
+                <td>{formatPriceWithChange(row.current_price, row.price_change_percent)}</td>
                 <td>{formatCurrency(row.strike)}</td>
                 <td>{formatCurrency(premium)}</td>
                 <td>
@@ -160,7 +181,7 @@ function DesktopTable({ data }: { data: OptionResult[] }) {
                     {formatPercent(row.annualized_return)}
                   </span>
                 </td>
-                <td>{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(4)}` : '-'}</td>
+                <td>{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(3)}` : '-'}</td>
                 <td>{formatPercent(row.prob_assign)}</td>
                 <td>{row.expiry}</td>
                 <td>{dte}</td>

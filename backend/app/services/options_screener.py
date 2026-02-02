@@ -90,6 +90,78 @@ def get_stock_price(symbol: str, api_source: str = "massive") -> Optional[float]
         return get_stock_price_massive(symbol)
 
 
+def get_stock_price_with_change_yahoo(symbol: str) -> Optional[Dict[str, float]]:
+    """Get current stock price with change from Yahoo Finance API"""
+    try:
+        print(f"Fetching price with change for {symbol} from Yahoo Finance...")
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        
+        current_price = info.get('regularMarketPrice', info.get('currentPrice'))
+        previous_close = info.get('regularMarketPreviousClose')
+        change_percent = info.get('regularMarketChangePercent')
+        
+        if not current_price or current_price <= 0:
+            print(f"WARNING: Yahoo Finance returned no price for {symbol}")
+            return None
+        
+        # Calculate change_percent if not provided
+        if change_percent is None and previous_close and previous_close > 0:
+            change_percent = ((current_price - previous_close) / previous_close) * 100
+        
+        result = {
+            'price': round(current_price, 2),
+            'previous_close': round(previous_close, 2) if previous_close else None,
+            'change_percent': round(change_percent, 2) if change_percent is not None else None
+        }
+        
+        if change_percent is not None:
+            print(f"Yahoo price with change for {symbol}: ${result['price']:.2f} ({'+' if change_percent >= 0 else ''}{change_percent:.2f}%)")
+        
+        return result
+        
+    except Exception as e:
+        print(f"ERROR getting Yahoo Finance price with change for {symbol}: {str(e)}")
+        return None
+
+
+def get_stock_price_with_change_massive(symbol: str) -> Optional[Dict[str, float]]:
+    """Get current stock price with change using Massive client (Yahoo Finance)"""
+    try:
+        massive_client = get_massive_client()
+        if not massive_client:
+            print(f"Massive client not available for {symbol}")
+            return None
+        return massive_client.get_stock_price_with_change(symbol)
+    except Exception as e:
+        print(f"ERROR getting Massive price with change for {symbol}: {str(e)}")
+        return None
+
+
+def get_stock_price_with_change_alpaca(symbol: str) -> Optional[Dict[str, float]]:
+    """Get current stock price with change using Alpaca API (real-time snapshot)"""
+    try:
+        use_midpoint = get_use_midpoint_pricing()
+        alpaca_client = get_alpaca_client(use_midpoint_pricing=use_midpoint)
+        if not alpaca_client:
+            print(f"Alpaca client not available for {symbol}")
+            return None
+        return alpaca_client.get_stock_price_with_change(symbol)
+    except Exception as e:
+        print(f"ERROR getting Alpaca price with change for {symbol}: {str(e)}")
+        return None
+
+
+def get_stock_price_with_change(symbol: str, api_source: str = "massive") -> Optional[Dict[str, float]]:
+    """Get current stock price with change using selected API source"""
+    if api_source.lower() == "yahoo":
+        return get_stock_price_with_change_yahoo(symbol)
+    elif api_source.lower() == "alpaca":
+        return get_stock_price_with_change_alpaca(symbol)
+    else:  # Default to massive
+        return get_stock_price_with_change_massive(symbol)
+
+
 def get_options_chain_yahoo(symbol: str, config: dict) -> pd.DataFrame:
     """
     Retrieve real options chain using Yahoo Finance.

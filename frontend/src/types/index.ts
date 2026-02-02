@@ -97,6 +97,7 @@ export interface UserInfo {
 export interface OptionResult {
   symbol: string;
   current_price: number;
+  price_change_percent?: number;  // Percent change from previous close
   strike: number;
   premium?: number;
   lastPrice?: number;

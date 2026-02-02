@@ -276,16 +276,29 @@ def cache_set_json(key: str, value: Any, ttl: int = 300) -> None:
     cache.set(key, json.dumps(value), ex=ttl)
 
 
-def get_cached_stock_price(symbol: str) -> Optional[float]:
-    """Get cached stock price"""
+def get_cached_stock_price(symbol: str) -> Optional[Any]:
+    """
+    Get cached stock price data.
+    
+    Returns:
+        Either a dict with {price, previous_close, change_percent} (new format)
+        or a float (legacy format for backward compatibility)
+    """
     key = make_cache_key("price", symbol)
     return cache_get_json(key)
 
 
-def set_cached_stock_price(symbol: str, price: float) -> None:
-    """Cache stock price with configured TTL"""
+def set_cached_stock_price(symbol: str, price_data: Any) -> None:
+    """
+    Cache stock price data with configured TTL.
+    
+    Args:
+        symbol: Stock ticker symbol
+        price_data: Either a dict with {price, previous_close, change_percent}
+                   or a float (legacy format for backward compatibility)
+    """
     key = make_cache_key("price", symbol)
-    cache_set_json(key, price, ttl=get_ttl_stock_price())
+    cache_set_json(key, price_data, ttl=get_ttl_stock_price())
 
 
 def get_cached_options_chain(symbol: str, config_hash: str) -> Optional[list]:
