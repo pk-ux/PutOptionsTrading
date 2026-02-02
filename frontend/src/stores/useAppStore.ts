@@ -216,8 +216,8 @@ export const useAppStore = create<AppState>()(
       usedYahooFallback: false,
       setUsedYahooFallback: (used) => set({ usedYahooFallback: used }),
 
-      // Sidebar
-      sidebarOpen: true,
+      // Sidebar - default closed for better mobile experience
+      sidebarOpen: false,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 

@@ -36,5 +36,6 @@ async def health_check():
         "version": settings.APP_VERSION,
         "database": db_status,
         "massive_api": "configured" if settings.MASSIVE_API_KEY else "not configured",
+        "alpaca_api": "configured" if settings.ALPACA_API_KEY and settings.ALPACA_SECRET_KEY else "not configured",
         "auth": "clerk" if settings.CLERK_SECRET_KEY else "dev_mode"
     }
