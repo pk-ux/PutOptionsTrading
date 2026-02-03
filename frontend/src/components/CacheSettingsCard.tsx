@@ -24,6 +24,7 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
   const [ttlStockPrice, setTtlStockPrice] = useState(180);
   const [ttlOptionsChain, setTtlOptionsChain] = useState(300);
   const [ttlNews, setTtlNews] = useState(900);
+  const [ttlEventDates, setTtlEventDates] = useState(604800); // 1 week default
 
   // Load settings
   useEffect(() => {
@@ -39,6 +40,7 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
         setTtlStockPrice(data.ttl_stock_price);
         setTtlOptionsChain(data.ttl_options_chain);
         setTtlNews(data.ttl_news);
+        setTtlEventDates(data.ttl_event_dates || 604800);
       } catch (err: any) {
         console.error('Failed to load cache settings:', err);
         setError('Failed to load cache settings');
@@ -62,6 +64,7 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
         ttl_stock_price: ttlStockPrice,
         ttl_options_chain: ttlOptionsChain,
         ttl_news: ttlNews,
+        ttl_event_dates: ttlEventDates,
       });
       setSettings(updated);
       setSuccess(true);
@@ -72,7 +75,7 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
     } finally {
       setSaving(false);
     }
-  }, [cacheEnabled, ttlStockPrice, ttlOptionsChain, ttlNews]);
+  }, [cacheEnabled, ttlStockPrice, ttlOptionsChain, ttlNews, ttlEventDates]);
 
   // Check if form has changes
   const hasChanges =
@@ -80,11 +83,16 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
     (cacheEnabled !== settings.cache_enabled ||
       ttlStockPrice !== settings.ttl_stock_price ||
       ttlOptionsChain !== settings.ttl_options_chain ||
-      ttlNews !== settings.ttl_news);
+      ttlNews !== settings.ttl_news ||
+      ttlEventDates !== (settings.ttl_event_dates || 604800));
 
   // Convert seconds to minutes for display
   const secondsToMinutes = (seconds: number) => Math.round(seconds / 60);
   const minutesToSeconds = (minutes: number) => minutes * 60;
+  
+  // Convert seconds to days for event dates TTL
+  const secondsToDays = (seconds: number) => Math.round(seconds / 86400);
+  const daysToSeconds = (days: number) => days * 86400;
 
   if (loading) {
     return (
@@ -208,6 +216,29 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
               <span className="text-gray-400 text-sm">minutes</span>
               <span className="text-gray-500 text-xs ml-auto">
                 ({ttlNews} seconds)
+              </span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-dark-800 rounded-lg">
+            <label className="block text-sm font-medium text-white mb-2">
+              Earnings/Dividend TTL
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Cache duration for earnings and ex-dividend dates
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={secondsToDays(ttlEventDates)}
+                onChange={(e) => setTtlEventDates(daysToSeconds(parseInt(e.target.value) || 1))}
+                className="w-20 px-3 py-2 bg-dark-700 border border-white/10 rounded-lg text-white text-center"
+              />
+              <span className="text-gray-400 text-sm">days</span>
+              <span className="text-gray-500 text-xs ml-auto">
+                ({ttlEventDates} seconds)
               </span>
             </div>
           </div>

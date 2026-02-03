@@ -6,12 +6,14 @@ Includes caching layer for:
 - Stock prices (1 minute TTL)
 - Options chains (5 minutes TTL)
 - News (15 minutes TTL)
+- Event dates (1 week TTL)
 
 Supports multiple API providers:
 - Massive.com API (15-minute delayed options data)
 - Alpaca API (real-time options data with bid/ask quotes)
 """
 
+from datetime import date
 from typing import Dict, List, Any, Tuple
 
 # Import from local modules
@@ -28,6 +30,7 @@ from .options_screener import (
     calculate_metrics,
     screen_options as filter_options,
     format_output,
+    get_earnings_dividend_dates,
 )
 from .massive_api_client import get_massive_client
 from .alpaca_api_client import get_alpaca_client
@@ -38,7 +41,10 @@ from ..core.cache import (
     set_cached_options_chain,
     get_cached_news,
     set_cached_news,
+    get_cached_event_dates,
+    set_cached_event_dates,
     get_config_hash,
+    is_cache_disabled,
 )
 from ..core.api_provider import get_active_provider, get_use_midpoint_pricing
 
@@ -106,7 +112,71 @@ def screen_symbols(
             print(f"Error processing {symbol}: {e}")
             continue
     
+    # Enrich qualified results with earnings/dividend event flags
+    # This is done AFTER filtering to minimize API calls
+    results = _enrich_with_event_dates(results)
+    
     return results, used_yahoo
+
+
+def _enrich_with_event_dates(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Enrich qualified results with earnings/dividend flags.
+    Only fetches data for symbols that have qualifying options (post-filter optimization).
+    
+    Event flags are set to True only when the event date falls BETWEEN today and expiry date.
+    This ensures we only flag upcoming events that are relevant to the option's timeframe.
+    
+    Args:
+        results: Dictionary of symbol -> list of option dicts
+        
+    Returns:
+        Same results dict with has_earnings_before_expiry and has_dividend_before_expiry added
+    """
+    # Get today's date as string for comparison (YYYY-MM-DD format)
+    today_str = date.today().strftime('%Y-%m-%d')
+    
+    # Check if caching is disabled
+    cache_disabled = is_cache_disabled()
+    
+    for symbol, options in results.items():
+        if not options:
+            continue
+        
+        # Check cache first (unless caching is disabled)
+        event_dates = None if cache_disabled else get_cached_event_dates(symbol)
+        
+        if event_dates is None:
+            # Fetch from Yahoo Finance (only for qualified symbols)
+            event_dates = get_earnings_dividend_dates(symbol)
+            # Only cache if caching is enabled and we got valid data
+            if event_dates and not cache_disabled:
+                set_cached_event_dates(symbol, event_dates)
+        
+        if not event_dates:
+            event_dates = {'earnings_date': None, 'ex_dividend_date': None}
+        
+        # Add flags to each option row
+        for row in options:
+            expiry = row.get('expiry', '')
+            
+            # Check if earnings date is between now and expiry
+            # Event must be: today <= event_date < expiry
+            earnings_date = event_dates.get('earnings_date')
+            row['has_earnings_before_expiry'] = bool(
+                earnings_date and expiry and 
+                today_str <= earnings_date < expiry
+            )
+            
+            # Check if ex-dividend date is between now and expiry
+            # Event must be: today <= event_date < expiry
+            ex_div_date = event_dates.get('ex_dividend_date')
+            row['has_dividend_before_expiry'] = bool(
+                ex_div_date and expiry and 
+                today_str <= ex_div_date < expiry
+            )
+    
+    return results
 
 
 def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any]], bool]:

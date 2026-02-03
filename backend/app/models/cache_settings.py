@@ -21,6 +21,7 @@ class CacheSettings(Base):
     ttl_stock_price = Column(Integer, default=180, nullable=False)      # 3 minutes
     ttl_options_chain = Column(Integer, default=300, nullable=False)    # 5 minutes
     ttl_news = Column(Integer, default=900, nullable=False)             # 15 minutes
+    ttl_event_dates = Column(Integer, default=604800, nullable=False)   # 1 week = 604800 seconds
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     def __repr__(self):
@@ -33,5 +34,6 @@ class CacheSettings(Base):
             "ttl_stock_price": self.ttl_stock_price,
             "ttl_options_chain": self.ttl_options_chain,
             "ttl_news": self.ttl_news,
+            "ttl_event_dates": self.ttl_event_dates,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

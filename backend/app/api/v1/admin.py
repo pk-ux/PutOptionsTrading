@@ -493,6 +493,7 @@ class CacheSettingsResponse(BaseModel):
     ttl_stock_price: int
     ttl_options_chain: int
     ttl_news: int
+    ttl_event_dates: int
     updated_at: str | None = None
 
 
@@ -502,6 +503,7 @@ class CacheSettingsUpdate(BaseModel):
     ttl_stock_price: int | None = None
     ttl_options_chain: int | None = None
     ttl_news: int | None = None
+    ttl_event_dates: int | None = None
 
 
 def _get_or_create_cache_settings(db: Session) -> CacheSettings:
@@ -514,6 +516,7 @@ def _get_or_create_cache_settings(db: Session) -> CacheSettings:
             ttl_stock_price=180,
             ttl_options_chain=300,
             ttl_news=900,
+            ttl_event_dates=604800,  # 1 week default
         )
         db.add(settings)
         db.commit()
@@ -533,6 +536,7 @@ async def get_cache_settings(
         ttl_stock_price=settings.ttl_stock_price,
         ttl_options_chain=settings.ttl_options_chain,
         ttl_news=settings.ttl_news,
+        ttl_event_dates=settings.ttl_event_dates if hasattr(settings, 'ttl_event_dates') else 604800,
         updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
     )
 
@@ -564,6 +568,7 @@ async def update_cache_settings(
         ttl_stock_price=settings.ttl_stock_price,
         ttl_options_chain=settings.ttl_options_chain,
         ttl_news=settings.ttl_news,
+        ttl_event_dates=settings.ttl_event_dates if hasattr(settings, 'ttl_event_dates') else 604800,
         updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
     )
 

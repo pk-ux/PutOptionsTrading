@@ -112,6 +112,8 @@ export interface OptionResult {
   openInterest?: number;
   implied_volatility?: number;
   impliedVolatility?: number;
+  has_earnings_before_expiry?: boolean;  // Earnings call before expiry
+  has_dividend_before_expiry?: boolean;  // Ex-dividend date before expiry
 }
 
 // Screen request
@@ -166,6 +168,7 @@ export interface CacheSettings {
   ttl_stock_price: number;
   ttl_options_chain: number;
   ttl_news: number;
+  ttl_event_dates: number;  // Earnings/dividend dates cache TTL (default 1 week)
   updated_at?: string;
 }
 

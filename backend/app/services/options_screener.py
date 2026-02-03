@@ -162,6 +162,80 @@ def get_stock_price_with_change(symbol: str, api_source: str = "massive") -> Opt
         return get_stock_price_with_change_massive(symbol)
 
 
+def get_earnings_dividend_dates(symbol: str) -> Dict[str, Optional[str]]:
+    """
+    Fetch upcoming earnings and ex-dividend dates from Yahoo Finance.
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL')
+        
+    Returns:
+        Dictionary with:
+        - 'earnings_date': ISO date string (YYYY-MM-DD) or None
+        - 'ex_dividend_date': ISO date string (YYYY-MM-DD) or None
+    """
+    result = {
+        'earnings_date': None,
+        'ex_dividend_date': None
+    }
+    
+    try:
+        print(f"Fetching earnings/dividend dates for {symbol} from Yahoo Finance...")
+        stock = yf.Ticker(symbol)
+        
+        # Get earnings date from calendar
+        try:
+            calendar = stock.calendar
+            if calendar is not None:
+                # calendar can be a dict or DataFrame depending on yfinance version
+                if isinstance(calendar, dict) and 'Earnings Date' in calendar:
+                    dates = calendar['Earnings Date']
+                    if dates and len(dates) > 0:
+                        # Take the first (nearest) earnings date
+                        earnings_dt = dates[0]
+                        if hasattr(earnings_dt, 'strftime'):
+                            result['earnings_date'] = earnings_dt.strftime('%Y-%m-%d')
+                        else:
+                            result['earnings_date'] = str(earnings_dt)[:10]
+                elif hasattr(calendar, 'loc'):
+                    # DataFrame format
+                    if 'Earnings Date' in calendar.index:
+                        earnings_val = calendar.loc['Earnings Date']
+                        if earnings_val is not None and not pd.isna(earnings_val).all():
+                            if hasattr(earnings_val, 'iloc'):
+                                earnings_dt = earnings_val.iloc[0]
+                            else:
+                                earnings_dt = earnings_val
+                            if hasattr(earnings_dt, 'strftime'):
+                                result['earnings_date'] = earnings_dt.strftime('%Y-%m-%d')
+                            elif earnings_dt:
+                                result['earnings_date'] = str(earnings_dt)[:10]
+        except Exception as e:
+            print(f"  Could not get earnings date for {symbol}: {e}")
+        
+        # Get ex-dividend date from info
+        try:
+            info = stock.info
+            ex_div_ts = info.get('exDividendDate')
+            if ex_div_ts and ex_div_ts > 0:
+                from datetime import timezone
+                ex_div_dt = datetime.fromtimestamp(ex_div_ts, tz=timezone.utc)
+                result['ex_dividend_date'] = ex_div_dt.strftime('%Y-%m-%d')
+        except Exception as e:
+            print(f"  Could not get ex-dividend date for {symbol}: {e}")
+        
+        if result['earnings_date'] or result['ex_dividend_date']:
+            print(f"  {symbol}: Earnings={result['earnings_date']}, Ex-Div={result['ex_dividend_date']}")
+        else:
+            print(f"  {symbol}: No upcoming earnings or dividend dates found")
+        
+        return result
+        
+    except Exception as e:
+        print(f"ERROR fetching earnings/dividend dates for {symbol}: {e}")
+        return result
+
+
 def get_options_chain_yahoo(symbol: str, config: dict) -> pd.DataFrame:
     """
     Retrieve real options chain using Yahoo Finance.

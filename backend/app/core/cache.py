@@ -32,6 +32,7 @@ DEFAULT_CACHE_SETTINGS: Dict[str, Any] = {
     "ttl_stock_price": 180,      # 3 minutes
     "ttl_options_chain": 300,    # 5 minutes
     "ttl_news": 900,             # 15 minutes
+    "ttl_event_dates": 604800,   # 1 week (earnings/dividend dates don't change often)
 }
 
 # In-memory cache settings (loaded from database at startup)
@@ -191,6 +192,7 @@ def load_cache_settings_from_db() -> Dict[str, Any]:
                 ttl_stock_price=180,
                 ttl_options_chain=300,
                 ttl_news=900,
+                ttl_event_dates=604800,  # 1 week for earnings/dividend dates
             )
             db.add(settings)
             db.commit()
@@ -222,6 +224,7 @@ def update_cache_settings_in_memory(settings: Dict[str, Any]) -> None:
         "ttl_stock_price": settings.get("ttl_stock_price", 180),
         "ttl_options_chain": settings.get("ttl_options_chain", 300),
         "ttl_news": settings.get("ttl_news", 900),
+        "ttl_event_dates": settings.get("ttl_event_dates", 604800),
         "updated_at": settings.get("updated_at"),
     }
     print(f"Updated in-memory cache settings: enabled={_cache_settings['cache_enabled']}")
@@ -250,6 +253,11 @@ def get_ttl_options_chain() -> int:
 def get_ttl_news() -> int:
     """Get TTL for news cache."""
     return _cache_settings.get("ttl_news", 900)
+
+
+def get_ttl_event_dates() -> int:
+    """Get TTL for event dates (earnings/dividend) cache."""
+    return _cache_settings.get("ttl_event_dates", 604800)
 
 
 # Convenience functions for common cache operations
@@ -323,6 +331,18 @@ def set_cached_news(symbol: str, news: list) -> None:
     """Cache news with configured TTL"""
     key = make_cache_key("news", symbol)
     cache_set_json(key, news, ttl=get_ttl_news())
+
+
+def get_cached_event_dates(symbol: str) -> Optional[Dict]:
+    """Get cached event dates (earnings/dividend) for a symbol"""
+    key = make_cache_key("events", symbol)
+    return cache_get_json(key)
+
+
+def set_cached_event_dates(symbol: str, data: Dict) -> None:
+    """Cache event dates with configured TTL (default 1 week)"""
+    key = make_cache_key("events", symbol)
+    cache_set_json(key, data, ttl=get_ttl_event_dates())
 
 
 def get_config_hash(config: dict) -> str:

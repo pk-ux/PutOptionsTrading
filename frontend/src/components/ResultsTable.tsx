@@ -55,6 +55,38 @@ function formatPriceWithChange(price: number | undefined, changePercent?: number
   );
 }
 
+function ExpiryWithEvents({ 
+  expiry, 
+  hasEarnings, 
+  hasDividend 
+}: { 
+  expiry: string; 
+  hasEarnings?: boolean; 
+  hasDividend?: boolean; 
+}): JSX.Element {
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      {expiry}
+      {hasEarnings && (
+        <span 
+          className="px-1.5 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-400 rounded" 
+          title="Earnings before expiry"
+        >
+          E
+        </span>
+      )}
+      {hasDividend && (
+        <span 
+          className="px-1.5 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-400 rounded" 
+          title="Ex-dividend before expiry"
+        >
+          D
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Mobile card component for a single result
 function ResultCard({ row, index }: { row: OptionResult; index: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -103,7 +135,13 @@ function ResultCard({ row, index }: { row: OptionResult; index: number }) {
       {/* Expiry row */}
       <div className="flex justify-between text-sm border-t border-white/5 pt-2">
         <span className="text-gray-500">Expiry:</span>
-        <span className="text-gray-300">{row.expiry}</span>
+        <span className="text-gray-300">
+          <ExpiryWithEvents 
+            expiry={row.expiry} 
+            hasEarnings={row.has_earnings_before_expiry} 
+            hasDividend={row.has_dividend_before_expiry} 
+          />
+        </span>
       </div>
       
       {/* Expandable details */}
@@ -183,7 +221,13 @@ function DesktopTable({ data }: { data: OptionResult[] }) {
                 </td>
                 <td>{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(3)}` : '-'}</td>
                 <td>{formatPercent(row.prob_assign)}</td>
-                <td>{row.expiry}</td>
+                <td>
+                  <ExpiryWithEvents 
+                    expiry={row.expiry} 
+                    hasEarnings={row.has_earnings_before_expiry} 
+                    hasDividend={row.has_dividend_before_expiry} 
+                  />
+                </td>
                 <td>{dte}</td>
                 <td>{row.volume}</td>
                 <td>{oi}</td>
