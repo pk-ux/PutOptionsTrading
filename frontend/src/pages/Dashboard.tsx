@@ -17,6 +17,7 @@ import { ChipSelector } from '@/components/ChipSelector';
 import { Modal } from '@/components/Modal';
 import { FilterForm } from '@/components/FilterForm';
 import { TradeIdeaForm } from '@/components/TradeIdeaForm';
+import { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import { useFiltersAndIdeas } from '@/hooks/useFiltersAndIdeas';
 import type { OptionResult, Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
@@ -71,6 +72,16 @@ export function Dashboard() {
   const [editingFilter, setEditingFilter] = useState<Filter | null>(null);
   const [editingTradeIdea, setEditingTradeIdea] = useState<TradeIdea | null>(null);
   const [formLoading, setFormLoading] = useState(false);
+
+  // AI Analysis panel state
+  const [analysisPanelOpen, setAnalysisPanelOpen] = useState(false);
+  const [analysisSymbol, setAnalysisSymbol] = useState<string>('');
+
+  // Handle analyze button click
+  const handleAnalyze = useCallback((symbol: string) => {
+    setAnalysisSymbol(symbol);
+    setAnalysisPanelOpen(true);
+  }, []);
 
   // Load filters and trade ideas on mount
   useEffect(() => {
@@ -432,7 +443,7 @@ export function Dashboard() {
               )}
             </div>
 
-            <ResultsTable data={currentResults} title={selectedView} />
+            <ResultsTable data={currentResults} title={selectedView} onAnalyze={handleAnalyze} />
 
             {/* Yahoo fallback notice */}
             {usedYahooFallback && !isScreening && (
@@ -492,6 +503,13 @@ export function Dashboard() {
           loading={formLoading}
         />
       </Modal>
+
+      {/* AI Stock Analysis Panel */}
+      <StockAnalysisPanel
+        symbol={analysisSymbol}
+        isOpen={analysisPanelOpen}
+        onClose={() => setAnalysisPanelOpen(false)}
+      />
     </div>
   );
 }

@@ -20,6 +20,10 @@ import type {
   CacheSettings,
   ApiProviderSettings,
   MarketSettings,
+  StockAnalysis,
+  AnalysisError,
+  AISettings,
+  AISettingsUpdate,
 } from '@/types';
 
 // Get API base URL from environment or default to relative path
@@ -282,6 +286,28 @@ export const apiClient = {
   // Update market settings (admin only)
   async updateMarketSettings(settings: { risk_free_rate: number }): Promise<MarketSettings> {
     const response = await api.put('/api/v1/admin/market-settings', settings);
+    return response.data;
+  },
+
+  // ============== AI Analysis API ==============
+
+  // Analyze a stock
+  async analyzeStock(symbol: string, forceRefresh = false): Promise<StockAnalysis | AnalysisError> {
+    const response = await api.post(`/api/v1/analyze/${symbol}`, null, {
+      params: { force_refresh: forceRefresh },
+    });
+    return response.data;
+  },
+
+  // Get AI settings
+  async getAISettings(): Promise<AISettings> {
+    const response = await api.get('/api/v1/analyze/settings');
+    return response.data;
+  },
+
+  // Update AI settings (admin only)
+  async updateAISettings(settings: AISettingsUpdate): Promise<AISettings> {
+    const response = await api.put('/api/v1/analyze/settings', settings);
     return response.data;
   },
 };

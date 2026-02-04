@@ -420,6 +420,90 @@ class MassiveAPIClient:
             print(f"Error fetching news for {symbol}: {str(e)}")
             return []
 
+    def get_short_interest(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch short interest data from Massive API (Polygon).
+        
+        Args:
+            symbol: Stock ticker symbol
+            
+        Returns:
+            Dictionary with short interest data or None if unavailable
+        """
+        if not self.client:
+            return None
+        
+        try:
+            for si in self.client.list_short_interest(ticker=symbol, limit=1):
+                return {
+                    'short_interest': getattr(si, 'short_volume', None),
+                    'short_interest_percent': getattr(si, 'short_interest_percent', None),
+                    'date': str(si.date) if hasattr(si, 'date') else None
+                }
+        except Exception as e:
+            print(f"Error fetching short interest for {symbol}: {e}")
+        return None
+
+    def get_analyst_ratings(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch analyst consensus ratings from Massive API (Benzinga).
+        
+        Args:
+            symbol: Stock ticker symbol
+            
+        Returns:
+            Dictionary with analyst ratings or None if unavailable
+        """
+        if not self.client:
+            return None
+        
+        try:
+            for rating in self.client.list_benzinga_consensus_ratings(ticker=symbol, limit=1):
+                return {
+                    'rating': getattr(rating, 'rating', None),
+                    'target_price': getattr(rating, 'target_price', None),
+                    'buy_count': getattr(rating, 'buy', 0),
+                    'hold_count': getattr(rating, 'hold', 0),
+                    'sell_count': getattr(rating, 'sell', 0)
+                }
+        except Exception as e:
+            print(f"Error fetching analyst ratings for {symbol}: {e}")
+        return None
+
+    def get_earnings_data(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch upcoming earnings from Massive API (Benzinga).
+        
+        Args:
+            symbol: Stock ticker symbol
+            
+        Returns:
+            Dictionary with earnings data or None if unavailable
+        """
+        if not self.client:
+            return None
+        
+        try:
+            from datetime import date
+            today = date.today()
+            future = today + timedelta(days=90)
+            
+            for earning in self.client.list_benzinga_earnings(
+                ticker=symbol,
+                date_gte=today.isoformat(),
+                date_lte=future.isoformat(),
+                limit=1
+            ):
+                return {
+                    'date': str(earning.date) if hasattr(earning, 'date') else None,
+                    'eps_estimate': getattr(earning, 'eps_estimate', None),
+                    'revenue_estimate': getattr(earning, 'revenue_estimate', None),
+                    'time': getattr(earning, 'time', None)  # BMO/AMC
+                }
+        except Exception as e:
+            print(f"Error fetching earnings for {symbol}: {e}")
+        return None
+
 
 # Global instance for easy import
 massive_client: Optional[MassiveAPIClient] = None

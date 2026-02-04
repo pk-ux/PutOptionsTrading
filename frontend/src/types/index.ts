@@ -187,3 +187,147 @@ export interface MarketSettings {
   risk_free_rate_percent: number;  // Convenience: risk_free_rate * 100
   updated_at?: string;
 }
+
+// ============== AI Stock Analysis Types ==============
+
+// Key metrics from real data
+export interface KeyMetrics {
+  current_price: number | null;
+  price_change_percent: number | null;
+  fifty_two_week_high: number | null;
+  fifty_two_week_low: number | null;
+  volume: number | null;
+  avg_volume: number | null;
+  market_cap: number | null;
+  pe_ratio: number | null;
+  beta: number | null;
+  short_interest_percent: number | null;
+  analyst_rating: string | null;
+  avg_price_target: number | null;
+  price_target_upside: number | null;
+}
+
+// Technical indicators
+export interface Technicals {
+  rsi_14: number | null;
+  sma_20: number | null;
+  sma_50: number | null;
+  sma_200: number | null;
+  trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | null;
+  support_level: number | null;
+  resistance_level: number | null;
+}
+
+// Scenario analysis
+export interface Scenario {
+  name: 'Bull Case' | 'Base Case' | 'Bear Case' | string;
+  probability: number;
+  price_target: number;
+  return_percent: number;
+  conditions: string[];
+  timeframe: string;
+}
+
+// Upcoming catalyst
+export interface Catalyst {
+  event: string;
+  date: string | null;
+  days_until: number | null;
+  importance: 'HIGH' | 'MEDIUM' | 'LOW';
+  expected_impact: string;
+}
+
+// Bullish/bearish factor
+export interface Factor {
+  factor: string;
+  source: 'News' | 'Technical' | 'Fundamental' | 'Analyst' | string;
+  weight: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+// Price target
+export interface PriceTarget {
+  price: number;
+  label: string;
+}
+
+// Entry zone
+export interface EntryZone {
+  low: number;
+  high: number;
+}
+
+// Trade recommendation
+export interface TradeRecommendation {
+  action: 'STRONG BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG SELL' | 'WAIT';
+  conviction: 'HIGH' | 'MEDIUM' | 'LOW';
+  rationale: string;
+  entry_zone: EntryZone | null;
+  stop_loss: number | null;
+  stop_loss_percent: number | null;
+  targets: PriceTarget[];
+  risk_reward_ratio: number | null;
+  position_size_suggestion: string;
+  timeframe: string;
+  warnings: string[];
+}
+
+// Complete stock analysis
+export interface StockAnalysis {
+  symbol: string;
+  analysis_date: string;
+  data_sources: string[];
+  
+  // Overall assessment
+  overall_sentiment: 'BULLISH' | 'NEUTRAL' | 'BEARISH';
+  confidence: number;
+  summary: string;
+  
+  // Factual data
+  key_metrics: KeyMetrics | null;
+  technicals: Technicals | null;
+  
+  // LLM-generated analysis
+  scenarios: Scenario[];
+  upcoming_catalysts: Catalyst[];
+  bullish_factors: Factor[];
+  bearish_factors: Factor[];
+  trade_recommendation: TradeRecommendation | null;
+  
+  // Metadata
+  cached_at: string | null;
+  expires_at: string | null;
+  llm_provider: string;
+  disclaimer: string;
+}
+
+// Analysis error response
+export interface AnalysisError {
+  error: string;
+  error_type: 'configuration' | 'data' | 'analysis' | 'system';
+  symbol: string;
+}
+
+// AI provider info
+export interface AIProvider {
+  name: string;
+  available: boolean;
+  display_name: string;
+}
+
+// AI settings (admin only)
+export interface AISettings {
+  ai_enabled: boolean;
+  active_provider: 'gemini' | 'groq' | 'openai';
+  cache_enabled: boolean;
+  cache_ttl_seconds: number;
+  available_providers: AIProvider[];
+  updated_at?: string;
+}
+
+// AI settings update request
+export interface AISettingsUpdate {
+  ai_enabled?: boolean;
+  active_provider?: 'gemini' | 'groq' | 'openai';
+  cache_enabled?: boolean;
+  cache_ttl_seconds?: number;
+}

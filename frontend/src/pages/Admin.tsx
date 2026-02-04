@@ -14,6 +14,7 @@ import { SortableList } from '@/components/SortableList';
 import { CacheSettingsCard } from '@/components/CacheSettingsCard';
 import { ApiProviderCard } from '@/components/ApiProviderCard';
 import { MarketSettingsCard } from '@/components/MarketSettingsCard';
+import { AISettingsCard } from '@/components/AISettingsCard';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
@@ -446,9 +447,10 @@ export function Admin() {
         <MarketSettingsCard isReady={isReady} />
       </div>
       
-      {/* Cache Settings Row */}
-      <div className="mt-6">
+      {/* Cache and AI Settings Row */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CacheSettingsCard isReady={isReady} />
+        <AISettingsCard isReady={isReady} />
       </div>
     </div>
   );

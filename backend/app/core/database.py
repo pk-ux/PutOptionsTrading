@@ -55,7 +55,8 @@ def init_db() -> None:
     # Import all models to register them with SQLAlchemy
     from ..models import (
         User, UserSettings, Filter, TradeIdea,
-        CacheSettings, ApiProviderSettings, MarketSettings
+        CacheSettings, ApiProviderSettings, MarketSettings, AISettings,
+        AnalysisCache
     )
     Base.metadata.create_all(bind=engine)
     print(f"Database initialized: {db_url.split('@')[-1] if '@' in db_url else db_url}")

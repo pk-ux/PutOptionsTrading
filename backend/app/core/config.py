@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     ALPACA_API_KEY: Optional[str] = None
     ALPACA_SECRET_KEY: Optional[str] = None
     
+    # LLM Providers for AI Analysis
+    GEMINI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    
     # Redis Cache (optional - falls back to in-memory if not set)
     REDIS_URL: Optional[str] = None
     

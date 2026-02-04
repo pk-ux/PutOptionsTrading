@@ -11,6 +11,7 @@ from .screen import router as screen_router
 from .filters import router as filters_router
 from .trade_ideas import router as trade_ideas_router
 from .admin import router as admin_router
+from .analyze import router as analyze_router
 
 # Create main v1 router
 api_router = APIRouter()
@@ -22,3 +23,4 @@ api_router.include_router(screen_router, prefix="/api/v1", tags=["screening"])
 api_router.include_router(filters_router, prefix="/api/v1", tags=["filters"])
 api_router.include_router(trade_ideas_router, prefix="/api/v1", tags=["trade-ideas"])
 api_router.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+api_router.include_router(analyze_router, prefix="/api/v1/analyze", tags=["analysis"])

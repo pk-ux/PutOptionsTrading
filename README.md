@@ -24,11 +24,79 @@ Interactive web application that scans put option chains for a list of stocks, c
 - **Caching**: Redis/in-memory caching for faster repeated queries
 - **Real-time news**: Latest news headlines for screened tickers
 - **Configurable filters**: DTE, volume, open interest, return %, assignment probability
+- **AI Stock Analysis**: LLM-powered analysis with actionable trade recommendations
+
+---
+
+## AI Stock Analysis
+
+The application includes an AI-powered stock analysis feature that provides comprehensive trading recommendations based on real market data.
+
+### Features
+
+- **Multi-source Data**: Combines Yahoo Finance, Massive API, and Alpaca API data
+- **Technical Analysis**: RSI, SMA (20/50/200), support/resistance levels
+- **Scenario Analysis**: Bull, Base, and Bear cases with probability estimates
+- **Trade Recommendations**: Specific entry zones, stop losses, and price targets
+- **Risk/Reward Calculation**: Automatically calculated based on targets and stops
+- **Caching**: Results cached for 24 hours (configurable) to reduce API costs
+
+### Supported LLM Providers
+
+| Provider | Cost | Rate Limit | Notes |
+|----------|------|------------|-------|
+| Google Gemini Flash | Free | 15 RPM, 1M tokens/day | Recommended for free usage |
+| Groq (Llama 3.1 70B) | Free | 30 RPM | Fastest inference |
+| OpenAI GPT-4o-mini | ~$0.001/analysis | Standard limits | Most reliable |
+
+### Configuration
+
+1. Add at least one LLM API key to `backend/.env`:
+
+```bash
+# Get API keys from:
+# Gemini: https://makersuite.google.com/app/apikey
+# Groq: https://console.groq.com/keys
+# OpenAI: https://platform.openai.com/api-keys
+
+GEMINI_API_KEY=your_gemini_api_key
+# GROQ_API_KEY=your_groq_api_key
+# OPENAI_API_KEY=your_openai_api_key
+```
+
+2. Configure in Admin Dashboard (`/admin`):
+   - Enable/disable AI analysis
+   - Select preferred provider
+   - Configure cache duration
+
+### Usage
+
+1. Screen stocks using the normal workflow
+2. Click the **AI** icon (robot) on any result row
+3. View the analysis panel with:
+   - Overall sentiment (Bullish/Neutral/Bearish)
+   - Scenario probabilities
+   - Entry/stop/target levels
+   - Risk factors and catalysts
+
+### Data Sources Used
+
+| Source | Data Provided |
+|--------|--------------|
+| Yahoo Finance | Price, P/E, beta, 52-week range, earnings date |
+| Massive API | Short interest, analyst ratings, news |
+| Alpaca API | News (when selected as provider) |
+| Calculated | RSI, SMAs, support/resistance |
+
+### Important Disclaimer
+
+**This AI-generated analysis is for informational purposes only and does not constitute financial advice.** Past performance does not guarantee future results. Options trading involves significant risk of loss. Always do your own research and consider consulting a licensed financial advisor before making investment decisions. The developers of this tool are not responsible for any trading losses.
 
 ---
 
 ## Table of Contents
 
+- [AI Stock Analysis](#ai-stock-analysis)
 - [System Architecture](#system-architecture)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)

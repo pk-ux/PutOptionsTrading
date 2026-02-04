@@ -4,12 +4,13 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Bot } from 'lucide-react';
 import type { OptionResult } from '@/types';
 
 interface ResultsTableProps {
   data: OptionResult[];
   title: string;
+  onAnalyze?: (symbol: string) => void;
 }
 
 function formatCurrency(value: number | undefined): string {
@@ -88,7 +89,7 @@ function ExpiryWithEvents({
 }
 
 // Mobile card component for a single result
-function ResultCard({ row, index }: { row: OptionResult; index: number }) {
+function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: number; onAnalyze?: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   
   const premium = row.premium ?? row.lastPrice ?? 0;
@@ -106,6 +107,15 @@ function ResultCard({ row, index }: { row: OptionResult; index: number }) {
         <div className="flex items-center gap-3">
           <span className="text-lg font-bold text-white">{row.symbol}</span>
           <span className="text-gray-400 text-sm">{formatPriceWithChange(row.current_price, row.price_change_percent)}</span>
+          {onAnalyze && (
+            <button
+              onClick={() => onAnalyze(row.symbol)}
+              className="p-1.5 hover:bg-primary-500/20 rounded-lg transition-colors"
+              title="AI Analysis"
+            >
+              <Bot size={16} className="text-primary-400" />
+            </button>
+          )}
         </div>
         <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${getReturnBgClass(row.annualized_return)} ${getReturnClass(row.annualized_return)}`}>
           {formatPercent(row.annualized_return)}
@@ -181,7 +191,7 @@ function ResultCard({ row, index }: { row: OptionResult; index: number }) {
 }
 
 // Desktop table component
-function DesktopTable({ data }: { data: OptionResult[] }) {
+function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (symbol: string) => void }) {
   return (
     <div className="overflow-x-auto rounded-xl shadow-lg shadow-black/20 border border-white/5">
       <table className="data-table">
@@ -210,7 +220,20 @@ function DesktopTable({ data }: { data: OptionResult[] }) {
             
             return (
               <tr key={`${row.symbol}-${row.strike}-${row.expiry}-${index}`}>
-                <td className="font-medium">{row.symbol}</td>
+                <td className="font-medium">
+                  <span className="flex items-center gap-2">
+                    {row.symbol}
+                    {onAnalyze && (
+                      <button
+                        onClick={() => onAnalyze(row.symbol)}
+                        className="p-1 hover:bg-primary-500/20 rounded transition-colors"
+                        title="AI Analysis"
+                      >
+                        <Bot size={14} className="text-primary-400" />
+                      </button>
+                    )}
+                  </span>
+                </td>
                 <td>{formatPriceWithChange(row.current_price, row.price_change_percent)}</td>
                 <td>{formatCurrency(row.strike)}</td>
                 <td>{formatCurrency(premium)}</td>
@@ -241,7 +264,7 @@ function DesktopTable({ data }: { data: OptionResult[] }) {
   );
 }
 
-export function ResultsTable({ data, title }: ResultsTableProps) {
+export function ResultsTable({ data, title, onAnalyze }: ResultsTableProps) {
   if (!data || data.length === 0) {
     return (
       <div className="text-center text-gray-400 py-8">
@@ -255,13 +278,13 @@ export function ResultsTable({ data, title }: ResultsTableProps) {
       {/* Mobile: Card layout */}
       <div className="md:hidden">
         {data.map((row, index) => (
-          <ResultCard key={`card-${row.symbol}-${row.strike}-${row.expiry}-${index}`} row={row} index={index} />
+          <ResultCard key={`card-${row.symbol}-${row.strike}-${row.expiry}-${index}`} row={row} index={index} onAnalyze={onAnalyze} />
         ))}
       </div>
       
       {/* Desktop: Table layout */}
       <div className="hidden md:block">
-        <DesktopTable data={data} />
+        <DesktopTable data={data} onAnalyze={onAnalyze} />
       </div>
     </>
   );
