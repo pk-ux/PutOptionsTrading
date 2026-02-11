@@ -196,13 +196,20 @@ class BaseLLMProvider(ABC):
         """
         return """You are a professional stock analyst providing actionable trading recommendations.
 
+CRITICAL — NO HALLUCINATION POLICY:
+- You MUST base your ENTIRE analysis strictly on the data provided below. Do NOT use any prior knowledge about the company, its products, sector trends, or historical events unless that information is explicitly present in the data.
+- If a data section says "Data unavailable" or is empty, you MUST NOT fill in the gap with assumptions or general knowledge. Instead, acknowledge the gap (e.g., "Analyst data unavailable") and reduce your confidence accordingly.
+- Do NOT invent news headlines, earnings dates, analyst ratings, price targets, or any factual claims that are not in the provided data.
+- Do NOT reference specific events, partnerships, contracts, product launches, or management changes unless they appear in the news section below.
+- Every bullish/bearish factor MUST cite a specific number, indicator, or headline from the provided data. If you cannot cite a specific data point, do NOT include the factor.
+- For the "candle_pattern" field: only name a pattern if the recent price action data (open/high/low/close) clearly supports it. Use null if unsure.
+- For "overall_signal" and "signal_note": reference ONLY the indicators provided (RSI, MACD, SMAs, ATR, Fibonacci, volume, support/resistance). Do NOT introduce indicators that are not in the data.
+
 IMPORTANT RULES:
-1. Base your analysis ONLY on the data provided - do NOT invent or hallucinate data
-2. If data is missing, say "Data unavailable" rather than guessing
-3. All scenario probabilities MUST sum to exactly 1.0
-4. Price targets should be realistic based on the data (typically within 30% of current price)
-5. Stop loss MUST be below the entry zone
-6. For each bullish/bearish factor, cite the specific data that supports it
+1. All scenario probabilities MUST sum to exactly 1.0
+2. Price targets should be realistic based on the data (typically within 30% of current price)
+3. Stop loss MUST be below the entry zone
+4. If data quality is poor or limited, set confidence LOW (0.3-0.5) — do NOT inflate confidence to seem authoritative
 
 CONFIDENCE SCORING (0.0 to 1.0):
 - 0.85-1.0: Very strong conviction - multiple aligned signals, clear trend, supportive news, analyst consensus
@@ -335,14 +342,22 @@ Based on this data, provide your analysis in the following JSON format:
     "position_size_suggestion": "e.g., 100% normal position or 50% due to earnings risk",
     "timeframe": "e.g., 2-4 weeks",
     "warnings": ["warning1", "warning2"]
-  }}
+  }},
+  "candle_pattern": "Name of any significant recent candlestick pattern (e.g. Hammer, Doji, Three Black Crows) or null if none",
+  "overall_signal": "Short phrase summarizing the technical setup (e.g. OVERSOLD BOUNCE CANDIDATE, BEARISH BREAKDOWN, BULLISH CONTINUATION) or null",
+  "signal_note": "1-2 sentence explanation of the overall technical signal, referencing specific indicators from the data provided, or null"
 }}
 
-REMEMBER: 
+REMEMBER — STRICT RULES:
 - Probabilities MUST sum to 1.0
 - Stop loss MUST be below entry zone
-- Cite data sources for each factor
-- Confidence should reflect actual signal strength (0.5-0.6 for mixed signals, 0.8+ for strong alignment, 0.4 or below for weak/conflicting data) - DO NOT default to 0.7"""
+- Every factor MUST cite a specific data point from above (e.g., "RSI at 40.9 is neutral" or "Price is 20.4% below SMA 20"). If you cannot cite data, do NOT include the factor.
+- Do NOT fabricate news, events, analyst opinions, or any facts not in the data above
+- Do NOT reference company products, management, sector trends, or any information not explicitly provided
+- If news section is empty or unavailable, do NOT make up news-based factors
+- Confidence should reflect actual signal strength (0.5-0.6 for mixed signals, 0.8+ for strong alignment, 0.4 or below for weak/conflicting data) - DO NOT default to 0.7
+- For candle_pattern: use null unless the price data clearly supports a specific pattern
+- For overall_signal and signal_note: reference ONLY indicators from the data above"""
         
         return prompt
     
@@ -381,20 +396,60 @@ REMEMBER:
             return "Data unavailable"
         
         lines = []
+        
+        # RSI
         if technicals.get('rsi_14') is not None:
-            lines.append(f"RSI(14): {technicals['rsi_14']:.1f}")
-        if technicals.get('sma_20') is not None:
-            lines.append(f"SMA(20): ${technicals['sma_20']:.2f}")
-        if technicals.get('sma_50') is not None:
-            lines.append(f"SMA(50): ${technicals['sma_50']:.2f}")
-        if technicals.get('sma_200') is not None:
-            lines.append(f"SMA(200): ${technicals['sma_200']:.2f}")
-        if technicals.get('trend'):
-            lines.append(f"Trend: {technicals['trend']}")
-        if technicals.get('support_level') is not None:
-            lines.append(f"Support: ${technicals['support_level']:.2f}")
-        if technicals.get('resistance_level') is not None:
-            lines.append(f"Resistance: ${technicals['resistance_level']:.2f}")
+            rsi_label = f" ({technicals.get('rsi_signal', '')})" if technicals.get('rsi_signal') else ""
+            lines.append(f"RSI(14): {technicals['rsi_14']:.1f}{rsi_label}")
+        
+        # MACD
+        if technicals.get('macd_line') is not None:
+            lines.append(f"MACD Line: {technicals['macd_line']:.4f}")
+            lines.append(f"MACD Signal Line: {technicals['macd_signal_line']:.4f}")
+            lines.append(f"MACD Histogram: {technicals['macd_histogram']:.4f}")
+            lines.append(f"MACD Signal: {technicals.get('macd_signal', 'N/A')}")
+        
+        # SMAs with interpretation
+        for period, key, short in [(20, 'sma_20', 'sma20'), (50, 'sma_50', 'sma50'), (200, 'sma_200', 'sma200')]:
+            if technicals.get(key) is not None:
+                vs = technicals.get(f'price_vs_{short}', '')
+                dist = technicals.get(f'{short}_distance_pct')
+                dist_str = f" ({dist:+.1f}%)" if dist is not None else ""
+                lines.append(f"SMA({period}): ${technicals[key]:.2f} - Price {vs}{dist_str}")
+        
+        # Trends
+        if technicals.get('short_term_trend'):
+            lines.append(f"Short-Term Trend: {technicals['short_term_trend']}")
+        if technicals.get('long_term_trend'):
+            lines.append(f"Long-Term Trend: {technicals['long_term_trend']}")
+        
+        # ATR / Volatility
+        if technicals.get('atr_14') is not None:
+            vol_label = f" ({technicals.get('volatility_level', '')})" if technicals.get('volatility_level') else ""
+            lines.append(f"ATR(14): ${technicals['atr_14']:.2f}{vol_label}")
+        
+        # Fibonacci
+        if technicals.get('fib_high') is not None and technicals.get('fib_low') is not None:
+            lines.append(f"Fibonacci Range: ${technicals['fib_low']:.2f} - ${technicals['fib_high']:.2f}")
+            for label, key in [('23.6%', 'fib_23_6'), ('38.2%', 'fib_38_2'), ('50.0%', 'fib_50_0'), ('61.8%', 'fib_61_8')]:
+                if technicals.get(key) is not None:
+                    lines.append(f"  {label}: ${technicals[key]:.2f}")
+            if technicals.get('fib_nearest_level') and technicals.get('fib_nearest_price') is not None:
+                lines.append(f"  Nearest Level: {technicals['fib_nearest_level']} (${technicals['fib_nearest_price']:.2f})")
+        
+        # Volume Signal
+        if technicals.get('volume_signal'):
+            lines.append(f"Volume Signal: {technicals['volume_signal']}")
+        
+        # Support and Resistance
+        if technicals.get('near_support') is not None:
+            lines.append(f"Near Support: ${technicals['near_support']:.2f}")
+        if technicals.get('near_resistance') is not None:
+            lines.append(f"Near Resistance: ${technicals['near_resistance']:.2f}")
+        if technicals.get('major_support') is not None:
+            lines.append(f"Major Support: ${technicals['major_support']:.2f}")
+        if technicals.get('major_resistance') is not None:
+            lines.append(f"Major Resistance: ${technicals['major_resistance']:.2f}")
         
         return "\n".join(lines) if lines else "Data unavailable"
     

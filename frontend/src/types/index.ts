@@ -209,13 +209,59 @@ export interface KeyMetrics {
 
 // Technical indicators
 export interface Technicals {
+  // Oscillators
   rsi_14: number | null;
+  rsi_signal: 'OVERSOLD' | 'OVERBOUGHT' | 'NEUTRAL' | null;
+  macd_line: number | null;
+  macd_signal_line: number | null;
+  macd_histogram: number | null;
+  macd_signal: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null;
+
+  // Moving Averages
   sma_20: number | null;
   sma_50: number | null;
   sma_200: number | null;
+  price_vs_sma20: 'ABOVE' | 'BELOW' | null;
+  price_vs_sma50: 'ABOVE' | 'BELOW' | null;
+  price_vs_sma200: 'ABOVE' | 'BELOW' | null;
+  sma20_distance_pct: number | null;
+  sma50_distance_pct: number | null;
+  sma200_distance_pct: number | null;
+
+  // Trends
+  short_term_trend: 'UPTREND' | 'DOWNTREND' | null;
+  long_term_trend: 'UPTREND' | 'DOWNTREND' | null;
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS' | null;
+
+  // Support & Resistance
+  near_support: number | null;
+  major_support: number | null;
+  near_resistance: number | null;
+  major_resistance: number | null;
   support_level: number | null;
   resistance_level: number | null;
+
+  // Volatility
+  atr_14: number | null;
+  volatility_level: 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME' | null;
+
+  // Volume
+  volume_signal: 'NORMAL' | 'ACCUMULATION' | 'DISTRIBUTION' | 'CAPITULATION' | null;
+
+  // Fibonacci
+  fib_high: number | null;
+  fib_low: number | null;
+  fib_23_6: number | null;
+  fib_38_2: number | null;
+  fib_50_0: number | null;
+  fib_61_8: number | null;
+  fib_nearest_level: string | null;
+  fib_nearest_price: number | null;
+
+  // LLM-generated interpretive fields
+  candle_pattern: string | null;
+  overall_signal: string | null;
+  signal_note: string | null;
 }
 
 // Scenario analysis

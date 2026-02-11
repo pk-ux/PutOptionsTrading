@@ -171,15 +171,54 @@ def validate_analysis(analysis: Dict[str, Any], raw_data: Dict[str, Any]) -> Dic
         upside = ((analysis['key_metrics']['avg_price_target'] - current_price) / current_price) * 100
         analysis['key_metrics']['price_target_upside'] = round(upside, 2)
     
-    # 5. Use calculated technicals (not LLM guesses)
+    # 5. Use calculated technicals (not LLM guesses) + merge LLM interpretive fields
     analysis['technicals'] = {
+        # Oscillators
         'rsi_14': technicals.get('rsi_14'),
+        'rsi_signal': technicals.get('rsi_signal'),
+        'macd_line': technicals.get('macd_line'),
+        'macd_signal_line': technicals.get('macd_signal_line'),
+        'macd_histogram': technicals.get('macd_histogram'),
+        'macd_signal': technicals.get('macd_signal'),
+        # Moving Averages
         'sma_20': technicals.get('sma_20'),
         'sma_50': technicals.get('sma_50'),
         'sma_200': technicals.get('sma_200'),
+        'price_vs_sma20': technicals.get('price_vs_sma20'),
+        'price_vs_sma50': technicals.get('price_vs_sma50'),
+        'price_vs_sma200': technicals.get('price_vs_sma200'),
+        'sma20_distance_pct': technicals.get('sma20_distance_pct'),
+        'sma50_distance_pct': technicals.get('sma50_distance_pct'),
+        'sma200_distance_pct': technicals.get('sma200_distance_pct'),
+        # Trends
+        'short_term_trend': technicals.get('short_term_trend'),
+        'long_term_trend': technicals.get('long_term_trend'),
         'trend': technicals.get('trend', 'SIDEWAYS'),
+        # Support & Resistance
+        'near_support': technicals.get('near_support'),
+        'major_support': technicals.get('major_support'),
+        'near_resistance': technicals.get('near_resistance'),
+        'major_resistance': technicals.get('major_resistance'),
         'support_level': technicals.get('support_level'),
         'resistance_level': technicals.get('resistance_level'),
+        # Volatility
+        'atr_14': technicals.get('atr_14'),
+        'volatility_level': technicals.get('volatility_level'),
+        # Volume
+        'volume_signal': technicals.get('volume_signal'),
+        # Fibonacci
+        'fib_high': technicals.get('fib_high'),
+        'fib_low': technicals.get('fib_low'),
+        'fib_23_6': technicals.get('fib_23_6'),
+        'fib_38_2': technicals.get('fib_38_2'),
+        'fib_50_0': technicals.get('fib_50_0'),
+        'fib_61_8': technicals.get('fib_61_8'),
+        'fib_nearest_level': technicals.get('fib_nearest_level'),
+        'fib_nearest_price': technicals.get('fib_nearest_price'),
+        # LLM-generated interpretive fields (keep as-is from LLM)
+        'candle_pattern': analysis.get('candle_pattern'),
+        'overall_signal': analysis.get('overall_signal'),
+        'signal_note': analysis.get('signal_note'),
     }
     
     return analysis

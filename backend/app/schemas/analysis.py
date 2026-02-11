@@ -71,13 +71,59 @@ class KeyMetrics(BaseModel):
 
 
 class Technicals(BaseModel):
+    # Oscillators
     rsi_14: Optional[float] = None
+    rsi_signal: Optional[str] = None  # OVERSOLD / OVERBOUGHT / NEUTRAL
+    macd_line: Optional[float] = None
+    macd_signal_line: Optional[float] = None
+    macd_histogram: Optional[float] = None
+    macd_signal: Optional[str] = None  # BULLISH / BEARISH / NEUTRAL
+
+    # Moving Averages
     sma_20: Optional[float] = None
     sma_50: Optional[float] = None
     sma_200: Optional[float] = None
-    trend: Optional[str] = None
-    support_level: Optional[float] = None
-    resistance_level: Optional[float] = None
+    price_vs_sma20: Optional[str] = None
+    price_vs_sma50: Optional[str] = None
+    price_vs_sma200: Optional[str] = None
+    sma20_distance_pct: Optional[float] = None
+    sma50_distance_pct: Optional[float] = None
+    sma200_distance_pct: Optional[float] = None
+
+    # Trends
+    short_term_trend: Optional[str] = None
+    long_term_trend: Optional[str] = None
+    trend: Optional[str] = None  # kept for backward compat
+
+    # Support & Resistance
+    near_support: Optional[float] = None
+    major_support: Optional[float] = None
+    near_resistance: Optional[float] = None
+    major_resistance: Optional[float] = None
+    support_level: Optional[float] = None   # backward compat
+    resistance_level: Optional[float] = None  # backward compat
+
+    # Volatility
+    atr_14: Optional[float] = None
+    volatility_level: Optional[str] = None  # LOW / MODERATE / HIGH / EXTREME
+
+    # Volume
+    volume_signal: Optional[str] = None  # NORMAL / ACCUMULATION / DISTRIBUTION / CAPITULATION
+
+    # Fibonacci
+    fib_high: Optional[float] = None
+    fib_low: Optional[float] = None
+    fib_23_6: Optional[float] = None
+    fib_38_2: Optional[float] = None
+    fib_50_0: Optional[float] = None
+    fib_61_8: Optional[float] = None
+    fib_nearest_level: Optional[str] = None
+    fib_nearest_price: Optional[float] = None
+
+    # LLM-generated interpretive fields
+    candle_pattern: Optional[str] = None
+    overall_signal: Optional[str] = None
+    signal_note: Optional[str] = None
 
 
 class Scenario(BaseModel):

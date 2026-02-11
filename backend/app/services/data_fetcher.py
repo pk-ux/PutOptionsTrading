@@ -92,7 +92,7 @@ def fetch_yahoo_data(symbol: str) -> Dict[str, Any]:
         return {}
 
 
-def fetch_price_history(symbol: str, days: int = 60) -> List[Dict[str, Any]]:
+def fetch_price_history(symbol: str, days: int = 365) -> List[Dict[str, Any]]:
     """
     Fetch price history for technical analysis.
     
@@ -128,13 +128,14 @@ def fetch_price_history(symbol: str, days: int = 60) -> List[Dict[str, Any]]:
         return []
 
 
-def calculate_technicals(price_history: List[Dict[str, Any]], current_price: float = None) -> Dict[str, Any]:
+def calculate_technicals(price_history: List[Dict[str, Any]], current_price: float = None, yahoo_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Calculate technical indicators from price history.
     
     Args:
         price_history: List of OHLCV data points
         current_price: Current stock price (optional, uses last close if not provided)
+        yahoo_data: Yahoo Finance data dict (for volume comparison)
         
     Returns:
         Dictionary with technical indicators
@@ -145,26 +146,42 @@ def calculate_technicals(price_history: List[Dict[str, Any]], current_price: flo
     closes = np.array([p['close'] for p in price_history])
     highs = np.array([p['high'] for p in price_history])
     lows = np.array([p['low'] for p in price_history])
+    volumes = np.array([p['volume'] for p in price_history])
     
     price = current_price if current_price else closes[-1]
     
     result = {}
     
-    # RSI (14-day)
+    # ── RSI (14-day) ──
     try:
-        result['rsi_14'] = calculate_rsi(closes, 14)
-    except:
+        rsi = calculate_rsi(closes, 14)
+        result['rsi_14'] = rsi
+        if rsi is not None:
+            if rsi < 30:
+                result['rsi_signal'] = 'OVERSOLD'
+            elif rsi > 70:
+                result['rsi_signal'] = 'OVERBOUGHT'
+            else:
+                result['rsi_signal'] = 'NEUTRAL'
+        else:
+            result['rsi_signal'] = None
+    except Exception:
         result['rsi_14'] = None
+        result['rsi_signal'] = None
     
-    # Simple Moving Averages
-    if len(closes) >= 20:
-        result['sma_20'] = float(np.mean(closes[-20:]))
-    if len(closes) >= 50:
-        result['sma_50'] = float(np.mean(closes[-50:]))
-    if len(closes) >= 200:
-        result['sma_200'] = float(np.mean(closes[-200:]))
+    # ── Simple Moving Averages + interpretation ──
+    for period, key, short in [(20, 'sma_20', 'sma20'), (50, 'sma_50', 'sma50'), (200, 'sma_200', 'sma200')]:
+        if len(closes) >= period:
+            sma_val = float(np.mean(closes[-period:]))
+            result[key] = sma_val
+            result[f'price_vs_{short}'] = 'ABOVE' if price > sma_val else 'BELOW'
+            result[f'{short}_distance_pct'] = round(((price - sma_val) / sma_val) * 100, 2)
+        else:
+            result[key] = None
+            result[f'price_vs_{short}'] = None
+            result[f'{short}_distance_pct'] = None
     
-    # Determine trend
+    # ── Trend (backward compat) ──
     sma_20 = result.get('sma_20')
     sma_50 = result.get('sma_50')
     if sma_20 and sma_50:
@@ -174,14 +191,83 @@ def calculate_technicals(price_history: List[Dict[str, Any]], current_price: flo
             result['trend'] = 'DOWNTREND'
         else:
             result['trend'] = 'SIDEWAYS'
+    else:
+        result['trend'] = None
     
-    # Support and Resistance (simple: recent lows and highs)
-    recent_days = min(20, len(price_history))
-    recent_lows = lows[-recent_days:]
-    recent_highs = highs[-recent_days:]
+    # ── Multi-timeframe trends ──
+    if sma_20:
+        result['short_term_trend'] = 'UPTREND' if price > sma_20 else 'DOWNTREND'
+    else:
+        result['short_term_trend'] = None
     
-    result['support_level'] = float(np.min(recent_lows))
-    result['resistance_level'] = float(np.max(recent_highs))
+    sma_200 = result.get('sma_200')
+    if sma_200:
+        result['long_term_trend'] = 'UPTREND' if price > sma_200 else 'DOWNTREND'
+    else:
+        result['long_term_trend'] = None
+    
+    # ── MACD ──
+    try:
+        macd_data = calculate_macd(closes)
+        result.update(macd_data)
+    except Exception:
+        result['macd_line'] = None
+        result['macd_signal_line'] = None
+        result['macd_histogram'] = None
+        result['macd_signal'] = None
+    
+    # ── ATR (14-day) ──
+    try:
+        atr = calculate_atr(highs, lows, closes, 14)
+        result['atr_14'] = atr
+        if atr is not None and price > 0:
+            atr_pct = (atr / price) * 100
+            if atr_pct < 2:
+                result['volatility_level'] = 'LOW'
+            elif atr_pct < 4:
+                result['volatility_level'] = 'MODERATE'
+            elif atr_pct < 7:
+                result['volatility_level'] = 'HIGH'
+            else:
+                result['volatility_level'] = 'EXTREME'
+        else:
+            result['volatility_level'] = None
+    except Exception:
+        result['atr_14'] = None
+        result['volatility_level'] = None
+    
+    # ── Fibonacci Retracement ──
+    try:
+        fib_data = calculate_fibonacci(highs, lows, price)
+        result.update(fib_data)
+    except Exception:
+        result['fib_high'] = None
+        result['fib_low'] = None
+        result['fib_23_6'] = None
+        result['fib_38_2'] = None
+        result['fib_50_0'] = None
+        result['fib_61_8'] = None
+        result['fib_nearest_level'] = None
+        result['fib_nearest_price'] = None
+    
+    # ── Volume Signal ──
+    try:
+        vol_signal = calculate_volume_signal(volumes, closes, yahoo_data)
+        result['volume_signal'] = vol_signal
+    except Exception:
+        result['volume_signal'] = None
+    
+    # ── Support and Resistance (near = 20-day, major = longer-term pivots) ──
+    try:
+        sr_data = calculate_support_resistance(highs, lows, closes, price)
+        result.update(sr_data)
+    except Exception:
+        result['near_support'] = None
+        result['near_resistance'] = None
+        result['major_support'] = None
+        result['major_resistance'] = None
+        result['support_level'] = None
+        result['resistance_level'] = None
     
     return result
 
@@ -221,6 +307,230 @@ def calculate_rsi(closes: np.ndarray, period: int = 14) -> float:
     return float(rsi)
 
 
+def _ema(data: np.ndarray, period: int) -> np.ndarray:
+    """Calculate Exponential Moving Average."""
+    multiplier = 2.0 / (period + 1)
+    ema = np.zeros_like(data)
+    ema[0] = data[0]
+    for i in range(1, len(data)):
+        ema[i] = (data[i] - ema[i - 1]) * multiplier + ema[i - 1]
+    return ema
+
+
+def calculate_macd(closes: np.ndarray) -> Dict[str, Any]:
+    """
+    Calculate MACD (12, 26, 9).
+    
+    Returns:
+        Dictionary with macd_line, macd_signal_line, macd_histogram, macd_signal
+    """
+    if len(closes) < 26:
+        return {
+            'macd_line': None,
+            'macd_signal_line': None,
+            'macd_histogram': None,
+            'macd_signal': None,
+        }
+    
+    ema_12 = _ema(closes, 12)
+    ema_26 = _ema(closes, 26)
+    macd_line = ema_12 - ema_26
+    signal_line = _ema(macd_line, 9)
+    histogram = macd_line - signal_line
+    
+    macd_val = float(macd_line[-1])
+    signal_val = float(signal_line[-1])
+    hist_val = float(histogram[-1])
+    
+    # Determine MACD signal
+    if hist_val > 0 and macd_val > signal_val:
+        macd_signal = 'BULLISH'
+    elif hist_val < 0 and macd_val < signal_val:
+        macd_signal = 'BEARISH'
+    else:
+        macd_signal = 'NEUTRAL'
+    
+    return {
+        'macd_line': round(macd_val, 4),
+        'macd_signal_line': round(signal_val, 4),
+        'macd_histogram': round(hist_val, 4),
+        'macd_signal': macd_signal,
+    }
+
+
+def calculate_atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
+    """
+    Calculate Average True Range (vectorized).
+    
+    Returns:
+        ATR value or None
+    """
+    if len(closes) < period + 1:
+        return None
+    
+    # True Range = max(H-L, |H-prevC|, |L-prevC|)  — vectorized
+    hl = highs[1:] - lows[1:]
+    hc = np.abs(highs[1:] - closes[:-1])
+    lc = np.abs(lows[1:] - closes[:-1])
+    tr = np.maximum(hl, np.maximum(hc, lc))
+    
+    if len(tr) < period:
+        return None
+    
+    atr = float(np.mean(tr[-period:]))
+    return round(atr, 4)
+
+
+def calculate_fibonacci(highs: np.ndarray, lows: np.ndarray, current_price: float) -> Dict[str, Any]:
+    """
+    Calculate Fibonacci retracement levels from the highest high to lowest low
+    in the available history.
+    
+    Returns:
+        Dictionary with fib levels and nearest level info
+    """
+    fib_high = float(np.max(highs))
+    fib_low = float(np.min(lows))
+    diff = fib_high - fib_low
+    
+    if diff <= 0:
+        return {
+            'fib_high': fib_high, 'fib_low': fib_low,
+            'fib_23_6': None, 'fib_38_2': None,
+            'fib_50_0': None, 'fib_61_8': None,
+            'fib_nearest_level': None, 'fib_nearest_price': None,
+        }
+    
+    # Fibonacci retracement levels (measured from the high)
+    levels = {
+        '23.6%': fib_high - diff * 0.236,
+        '38.2%': fib_high - diff * 0.382,
+        '50.0%': fib_high - diff * 0.500,
+        '61.8%': fib_high - diff * 0.618,
+    }
+    
+    # Find nearest level
+    nearest_level = None
+    nearest_price = None
+    min_distance = float('inf')
+    for label, level_price in levels.items():
+        dist = abs(current_price - level_price)
+        if dist < min_distance:
+            min_distance = dist
+            nearest_level = label
+            nearest_price = level_price
+    
+    return {
+        'fib_high': round(fib_high, 2),
+        'fib_low': round(fib_low, 2),
+        'fib_23_6': round(levels['23.6%'], 2),
+        'fib_38_2': round(levels['38.2%'], 2),
+        'fib_50_0': round(levels['50.0%'], 2),
+        'fib_61_8': round(levels['61.8%'], 2),
+        'fib_nearest_level': nearest_level,
+        'fib_nearest_price': round(nearest_price, 2) if nearest_price else None,
+    }
+
+
+def calculate_volume_signal(volumes: np.ndarray, closes: np.ndarray, yahoo_data: Dict[str, Any] = None) -> str:
+    """
+    Determine volume signal based on volume vs average and price direction.
+    
+    Returns:
+        One of 'NORMAL', 'ACCUMULATION', 'DISTRIBUTION', 'CAPITULATION'
+    """
+    if len(volumes) < 20 or len(closes) < 2:
+        return 'NORMAL'
+    
+    # Get average volume (use yahoo avg_volume if available, else 20-day mean)
+    if yahoo_data and yahoo_data.get('avg_volume'):
+        avg_vol = yahoo_data['avg_volume']
+    else:
+        avg_vol = float(np.mean(volumes[-20:]))
+    
+    current_vol = float(volumes[-1])
+    price_change = closes[-1] - closes[-2]
+    
+    if avg_vol <= 0:
+        return 'NORMAL'
+    
+    vol_ratio = current_vol / avg_vol
+    
+    if vol_ratio >= 2.5 and price_change < 0:
+        return 'CAPITULATION'
+    elif vol_ratio >= 1.5 and price_change > 0:
+        return 'ACCUMULATION'
+    elif vol_ratio >= 1.5 and price_change < 0:
+        return 'DISTRIBUTION'
+    else:
+        return 'NORMAL'
+
+
+def calculate_support_resistance(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, current_price: float) -> Dict[str, Any]:
+    """
+    Calculate near-term and major support/resistance levels.
+    Near = 20-day min/max. Major = pivot points from longer history.
+    
+    Returns:
+        Dictionary with near_support, near_resistance, major_support, major_resistance,
+        and backward-compat support_level, resistance_level
+    """
+    # Near-term: 20-day window
+    recent_days = min(20, len(lows))
+    near_support = float(np.min(lows[-recent_days:]))
+    near_resistance = float(np.max(highs[-recent_days:]))
+    
+    # Major: find significant pivots from full history
+    major_support = None
+    major_resistance = None
+    
+    if len(lows) >= 40:
+        # Find local minima (pivot lows) using a 5-bar window
+        pivot_lows = []
+        pivot_highs = []
+        window = 5
+        
+        for i in range(window, len(lows) - window):
+            # Pivot low: lower than surrounding bars
+            if lows[i] == np.min(lows[i - window:i + window + 1]):
+                if lows[i] < current_price:
+                    pivot_lows.append(float(lows[i]))
+            # Pivot high: higher than surrounding bars
+            if highs[i] == np.max(highs[i - window:i + window + 1]):
+                if highs[i] > current_price:
+                    pivot_highs.append(float(highs[i]))
+        
+        # Major support = highest pivot low below current price (strongest nearby support)
+        if pivot_lows:
+            pivot_lows.sort(reverse=True)
+            # Pick a level that is meaningfully below near_support for differentiation
+            for pl in pivot_lows:
+                if pl < near_support * 0.98:
+                    major_support = round(pl, 2)
+                    break
+            if major_support is None and pivot_lows:
+                major_support = round(pivot_lows[-1], 2)
+        
+        # Major resistance = lowest pivot high above current price (nearest major overhead)
+        if pivot_highs:
+            pivot_highs.sort()
+            for ph in pivot_highs:
+                if ph > near_resistance * 1.02:
+                    major_resistance = round(ph, 2)
+                    break
+            if major_resistance is None and pivot_highs:
+                major_resistance = round(pivot_highs[-1], 2)
+    
+    return {
+        'near_support': round(near_support, 2),
+        'near_resistance': round(near_resistance, 2),
+        'major_support': major_support,
+        'major_resistance': major_resistance,
+        'support_level': round(near_support, 2),       # backward compat
+        'resistance_level': round(near_resistance, 2),  # backward compat
+    }
+
+
 def get_all_analysis_data(symbol: str) -> Dict[str, Any]:
     """
     Fetch all data needed for stock analysis.
@@ -236,10 +546,11 @@ def get_all_analysis_data(symbol: str) -> Dict[str, Any]:
     yahoo_data = fetch_yahoo_data(symbol)
     
     # Fetch price history and calculate technicals
-    price_history = fetch_price_history(symbol, days=60)
+    price_history = fetch_price_history(symbol, days=365)
     technicals = calculate_technicals(
         price_history, 
-        current_price=yahoo_data.get('current_price')
+        current_price=yahoo_data.get('current_price'),
+        yahoo_data=yahoo_data,
     )
     
     return {

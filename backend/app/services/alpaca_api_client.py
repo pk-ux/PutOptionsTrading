@@ -565,25 +565,38 @@ class AlpacaAPIClient:
                 T = dte / 365.0
                 
                 # ---------- PRICE EXTRACTION ----------
-                # Priority: mid-point > last trade > close_price (from Trading API)
+                # Priority: mid-point/ask > last trade > close_price (from Trading API)
+                #
+                # IMPORTANT: Only use quote-based pricing when BOTH bid and ask
+                # are present (two-sided market). A one-sided quote (ask-only with
+                # bid=0) is unreliable — market makers post placeholder asks on
+                # illiquid deep-OTM options that wildly overstate the true premium.
+                # In that case, fall through to last trade or close price.
                 option_price = None
                 price_source = None
                 
-                # Try latest quote for bid/ask
+                # Try latest quote for bid/ask (require two-sided market)
                 if hasattr(snapshot, 'latest_quote') and snapshot.latest_quote:
                     quote = snapshot.latest_quote
                     bid = getattr(quote, 'bid_price', None)
                     ask = getattr(quote, 'ask_price', None)
                     
-                    if self.use_midpoint_pricing and bid and ask and bid > 0 and ask > 0:
-                        option_price = (bid + ask) / 2
-                        price_source = 'mid_point'
-                    elif bid and bid > 0:
+                    has_bid = bid is not None and bid > 0
+                    has_ask = ask is not None and ask > 0
+                    
+                    if has_bid and has_ask:
+                        # Two-sided market: use mid-point or ask based on setting
+                        if self.use_midpoint_pricing:
+                            option_price = (bid + ask) / 2
+                            price_source = 'mid_point'
+                        else:
+                            option_price = ask
+                            price_source = 'ask'
+                    elif has_bid:
+                        # Bid-only (rare) — use bid
                         option_price = bid
                         price_source = 'bid'
-                    elif ask and ask > 0:
-                        option_price = ask
-                        price_source = 'ask'
+                    # else: ask-only (no bid) — skip quote, fall through to last trade
                 
                 # Fallback to latest trade
                 if option_price is None and hasattr(snapshot, 'latest_trade') and snapshot.latest_trade:
