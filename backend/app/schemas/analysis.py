@@ -120,6 +120,42 @@ class Technicals(BaseModel):
     fib_nearest_level: Optional[str] = None
     fib_nearest_price: Optional[float] = None
 
+    # Momentum Oscillators
+    ema_9: Optional[float] = None
+    price_vs_ema9: Optional[str] = None  # ABOVE / BELOW
+    ema9_distance_pct: Optional[float] = None
+    stoch_k: Optional[float] = None
+    stoch_d: Optional[float] = None
+    stoch_signal: Optional[str] = None  # OVERSOLD / OVERBOUGHT / NEUTRAL / BULLISH_CROSS / BEARISH_CROSS
+    roc_5d: Optional[float] = None
+    roc_10d: Optional[float] = None
+
+    # Bollinger Bands
+    bb_upper: Optional[float] = None
+    bb_middle: Optional[float] = None
+    bb_lower: Optional[float] = None
+    bb_position: Optional[str] = None  # ABOVE_UPPER / UPPER_HALF / LOWER_HALF / BELOW_LOWER
+    bb_squeeze: Optional[bool] = None
+
+    # Enhanced Volume
+    vol_trend_3d_vs_20d: Optional[float] = None  # ratio of 3-day avg vs 20-day avg
+
+    # Gap Analysis
+    gap_direction: Optional[str] = None  # UP / DOWN / NONE
+    gap_size_pct: Optional[float] = None
+
+    # Market Context
+    rs_vs_spy_5d: Optional[float] = None
+    rs_vs_spy_10d: Optional[float] = None
+    rs_vs_spy_20d: Optional[float] = None
+    spy_change_5d: Optional[float] = None
+    sector: Optional[str] = None
+    industry: Optional[str] = None
+
+    # Post-Earnings
+    post_earnings_drift: Optional[str] = None  # UP / DOWN / NONE
+    days_since_earnings: Optional[int] = None
+
     # LLM-generated interpretive fields
     candle_pattern: Optional[str] = None
     overall_signal: Optional[str] = None

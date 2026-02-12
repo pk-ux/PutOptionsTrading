@@ -194,20 +194,33 @@ class BaseLLMProvider(ABC):
         Returns:
             System prompt instructing the LLM how to analyze stocks
         """
-        return """You are a professional stock analyst providing actionable trading recommendations.
+        return """You are a professional stock analyst providing actionable trading recommendations focused on SHORT-TERM MOMENTUM (1-2 week timeframe).
 
-CRITICAL — NO HALLUCINATION POLICY:
-- You MUST base your ENTIRE analysis strictly on the data provided below. Do NOT use any prior knowledge about the company, its products, sector trends, or historical events unless that information is explicitly present in the data.
-- If a data section says "Data unavailable" or is empty, you MUST NOT fill in the gap with assumptions or general knowledge. Instead, acknowledge the gap (e.g., "Analyst data unavailable") and reduce your confidence accordingly.
-- Do NOT invent news headlines, earnings dates, analyst ratings, price targets, or any factual claims that are not in the provided data.
+YOUR ROLE:
+You are expected to apply your expertise in technical analysis, market dynamics, and sector knowledge to synthesize the provided data into a coherent, insightful analysis. Go beyond restating numbers — interpret what the indicators mean together, identify confluences and divergences, and explain the "so what" for a trader.
+
+DATA INTEGRITY RULES:
+- All FACTUAL CLAIMS (specific numbers, dates, news events, analyst ratings, price targets) MUST come from the data provided below. Do NOT invent or fabricate any facts.
+- If a data section says "Data unavailable" or is empty, acknowledge the gap and reduce your confidence accordingly. Do NOT fill in missing facts with guesses.
 - Do NOT reference specific events, partnerships, contracts, product launches, or management changes unless they appear in the news section below.
-- Every bullish/bearish factor MUST cite a specific number, indicator, or headline from the provided data. If you cannot cite a specific data point, do NOT include the factor.
+- Every bullish/bearish factor MUST cite a specific data point (number, indicator value, or headline) from the provided data.
+- You MAY use your general knowledge of how sectors, industries, and market conditions typically behave to provide context and interpretation — but clearly distinguish between data-driven observations and general market reasoning.
 - For the "candle_pattern" field: only name a pattern if the recent price action data (open/high/low/close) clearly supports it. Use null if unsure.
-- For "overall_signal" and "signal_note": reference ONLY the indicators provided (RSI, MACD, SMAs, ATR, Fibonacci, volume, support/resistance). Do NOT introduce indicators that are not in the data.
+- For "overall_signal" and "signal_note": base these on the indicators provided (RSI, MACD, SMAs, EMA 9, Stochastic, ROC, Bollinger Bands, ATR, Fibonacci, volume, support/resistance, relative strength vs SPY). You may reference well-known technical concepts (e.g., golden cross, death cross, mean reversion) when the data supports them.
+
+SHORT-TERM MOMENTUM ANALYSIS PRIORITIES:
+- Weight EMA 9, Stochastic, ROC, and Bollinger Bands heavily — these are the primary short-term momentum gauges.
+- Stochastic oversold (<20) + bullish cross = strong short-term buy signal. Overbought (>80) + bearish cross = strong short-term sell signal.
+- ROC 5-day measures immediate momentum; ROC 10-day measures intermediate. Divergences between them matter.
+- Bollinger Band squeeze often precedes explosive moves. Position near lower band with positive ROC = potential bounce.
+- Price above EMA 9 with positive ROC = active short-term uptrend. Below EMA 9 with negative ROC = active downtrend.
+- Relative strength vs SPY shows whether the stock is leading or lagging the market — critical for momentum trades.
+- Gap analysis and post-earnings drift are high-probability short-term setups when present.
+- Volume trend (3-day vs 20-day) confirms or denies momentum signals.
 
 IMPORTANT RULES:
 1. All scenario probabilities MUST sum to exactly 1.0
-2. Price targets should be realistic based on the data (typically within 30% of current price)
+2. Price targets should be realistic for a 1-2 week timeframe (typically within 10-15% of current price)
 3. Stop loss MUST be below the entry zone
 4. If data quality is poor or limited, set confidence LOW (0.3-0.5) — do NOT inflate confidence to seem authoritative
 
@@ -242,22 +255,34 @@ Respond ONLY with valid JSON matching the exact schema provided. No additional t
         # Format news
         news_section = self._format_news(data.get('news', []))
         
-        # Format analyst ratings (Massive API)
+        # Format analyst ratings (Massive API or Yahoo Finance fallback)
         analyst_section = self._format_analyst_ratings(data.get('analyst_ratings'))
         
-        # Format short interest (Massive API)
+        # Format short interest (Massive API or Yahoo Finance fallback)
         short_section = self._format_short_interest(data.get('short_interest'))
         
         # Format events
         events_section = self._format_events(data)
         
-        prompt = f"""Analyze {symbol} and provide a trading recommendation.
+        # Format market context (SPY, relative strength, sector)
+        market_context_section = self._format_market_context(data)
+        
+        # Format recent price action (last 5 days OHLCV)
+        recent_price_section = self._format_recent_price_action(data)
+        
+        prompt = f"""Analyze {symbol} and provide a SHORT-TERM (1-2 week) momentum-based trading recommendation.
 
 === PRICE DATA ===
 {price_section}
 
 === TECHNICAL INDICATORS ===
 {technicals_section}
+
+=== MARKET CONTEXT ===
+{market_context_section}
+
+=== RECENT PRICE ACTION (Last 5 Days) ===
+{recent_price_section}
 
 === ANALYST RATINGS ===
 {analyst_section}
@@ -348,16 +373,19 @@ Based on this data, provide your analysis in the following JSON format:
   "signal_note": "1-2 sentence explanation of the overall technical signal, referencing specific indicators from the data provided, or null"
 }}
 
-REMEMBER — STRICT RULES:
+REMEMBER:
 - Probabilities MUST sum to 1.0
 - Stop loss MUST be below entry zone
-- Every factor MUST cite a specific data point from above (e.g., "RSI at 40.9 is neutral" or "Price is 20.4% below SMA 20"). If you cannot cite data, do NOT include the factor.
-- Do NOT fabricate news, events, analyst opinions, or any facts not in the data above
-- Do NOT reference company products, management, sector trends, or any information not explicitly provided
+- Every factor MUST cite a specific data point from above (e.g., "RSI at 40.9 is neutral", "Stochastic %K at 22 is oversold", "ROC 5d at +3.2% shows positive momentum")
+- Do NOT fabricate news, events, analyst opinions, earnings dates, or price targets not in the data above
 - If news section is empty or unavailable, do NOT make up news-based factors
-- Confidence should reflect actual signal strength (0.5-0.6 for mixed signals, 0.8+ for strong alignment, 0.4 or below for weak/conflicting data) - DO NOT default to 0.7
-- For candle_pattern: use null unless the price data clearly supports a specific pattern
-- For overall_signal and signal_note: reference ONLY indicators from the data above"""
+- You MAY apply sector/industry knowledge and general market reasoning to interpret the data — just don't invent facts
+- Confidence should reflect actual signal strength (0.5-0.6 for mixed signals, 0.8+ for strong alignment, 0.4 or below for weak/conflicting data) — do NOT default to 0.7
+- For candle_pattern: use null unless the recent 5-day OHLC data clearly supports a specific pattern
+- For overall_signal and signal_note: synthesize the technical indicators into a clear trading thesis — reference specific values and explain what they mean together
+- PRIORITIZE short-term momentum indicators (EMA 9, Stochastic, ROC, Bollinger Bands) for the 1-2 week trade recommendation
+- Use the MARKET CONTEXT section to assess whether the stock is leading or lagging the broader market
+- Provide ACTIONABLE insight — don't just restate numbers, explain what they mean for a trader's decision"""
         
         return prompt
     
@@ -367,25 +395,25 @@ REMEMBER — STRICT RULES:
             return "Data unavailable"
         
         lines = []
-        if 'current_price' in yahoo_data:
+        if yahoo_data.get('current_price') is not None:
             lines.append(f"Current Price: ${yahoo_data['current_price']:.2f}")
-        if 'previous_close' in yahoo_data:
+        if yahoo_data.get('previous_close') is not None:
             lines.append(f"Previous Close: ${yahoo_data['previous_close']:.2f}")
-        if 'change_percent' in yahoo_data:
+        if yahoo_data.get('change_percent') is not None:
             lines.append(f"Change: {yahoo_data['change_percent']:+.2f}%")
-        if 'fifty_two_week_high' in yahoo_data:
+        if yahoo_data.get('fifty_two_week_high') is not None:
             lines.append(f"52-Week High: ${yahoo_data['fifty_two_week_high']:.2f}")
-        if 'fifty_two_week_low' in yahoo_data:
+        if yahoo_data.get('fifty_two_week_low') is not None:
             lines.append(f"52-Week Low: ${yahoo_data['fifty_two_week_low']:.2f}")
-        if 'volume' in yahoo_data:
+        if yahoo_data.get('volume') is not None:
             lines.append(f"Volume: {yahoo_data['volume']:,}")
-        if 'avg_volume' in yahoo_data:
+        if yahoo_data.get('avg_volume') is not None:
             lines.append(f"Avg Volume: {yahoo_data['avg_volume']:,}")
-        if 'market_cap' in yahoo_data:
+        if yahoo_data.get('market_cap') is not None:
             lines.append(f"Market Cap: ${yahoo_data['market_cap']:,.0f}")
-        if 'pe_ratio' in yahoo_data and yahoo_data['pe_ratio']:
+        if yahoo_data.get('pe_ratio'):
             lines.append(f"P/E Ratio: {yahoo_data['pe_ratio']:.2f}")
-        if 'beta' in yahoo_data and yahoo_data['beta']:
+        if yahoo_data.get('beta'):
             lines.append(f"Beta: {yahoo_data['beta']:.2f}")
         
         return "\n".join(lines) if lines else "Data unavailable"
@@ -451,7 +479,103 @@ REMEMBER — STRICT RULES:
         if technicals.get('major_resistance') is not None:
             lines.append(f"Major Resistance: ${technicals['major_resistance']:.2f}")
         
+        # ── EMA 9 (short-term momentum) ──
+        if technicals.get('ema_9') is not None:
+            vs = technicals.get('price_vs_ema9', '')
+            dist = technicals.get('ema9_distance_pct')
+            dist_str = f" ({dist:+.1f}%)" if dist is not None else ""
+            lines.append(f"EMA(9): ${technicals['ema_9']:.2f} - Price {vs}{dist_str}")
+        
+        # ── Stochastic Oscillator ──
+        if technicals.get('stoch_k') is not None:
+            lines.append(f"Stochastic %K: {technicals['stoch_k']:.1f}")
+            lines.append(f"Stochastic %D: {technicals['stoch_d']:.1f}")
+            lines.append(f"Stochastic Signal: {technicals.get('stoch_signal', 'N/A')}")
+        
+        # ── Rate of Change ──
+        if technicals.get('roc_5d') is not None:
+            lines.append(f"ROC(5-day): {technicals['roc_5d']:+.2f}%")
+        if technicals.get('roc_10d') is not None:
+            lines.append(f"ROC(10-day): {technicals['roc_10d']:+.2f}%")
+        
+        # ── Bollinger Bands ──
+        if technicals.get('bb_upper') is not None:
+            lines.append(f"Bollinger Upper: ${technicals['bb_upper']:.2f}")
+            lines.append(f"Bollinger Middle: ${technicals['bb_middle']:.2f}")
+            lines.append(f"Bollinger Lower: ${technicals['bb_lower']:.2f}")
+            lines.append(f"Bollinger Position: {technicals.get('bb_position', 'N/A')}")
+            if technicals.get('bb_squeeze'):
+                lines.append("Bollinger Squeeze: YES (low volatility, potential breakout)")
+        
+        # ── Enhanced Volume ──
+        if technicals.get('vol_trend_3d_vs_20d') is not None:
+            ratio = technicals['vol_trend_3d_vs_20d']
+            label = "ABOVE AVERAGE" if ratio > 1.2 else "BELOW AVERAGE" if ratio < 0.8 else "NORMAL"
+            lines.append(f"3-Day Volume Trend: {ratio:.2f}x 20-day avg ({label})")
+        
+        # ── Gap Analysis ──
+        if technicals.get('gap_direction') and technicals['gap_direction'] != 'NONE':
+            lines.append(f"Gap Detected: {technicals['gap_direction']} gap of {technicals.get('gap_size_pct', 0):.1f}% in last 5 days")
+        
+        # ── Post-Earnings Drift ──
+        if technicals.get('post_earnings_drift') and technicals['post_earnings_drift'] != 'NONE':
+            days = technicals.get('days_since_earnings', '?')
+            lines.append(f"Post-Earnings Drift: {technicals['post_earnings_drift']} ({days} days since earnings)")
+        
         return "\n".join(lines) if lines else "Data unavailable"
+    
+    def _format_market_context(self, data: Dict[str, Any]) -> str:
+        """Format market context (SPY relative strength, sector) for prompt."""
+        technicals = data.get('technicals', {})
+        market_ctx = data.get('market_context', {})
+        
+        def _get(key: str):
+            """Get from technicals first, fallback to market_context (None-safe)."""
+            val = technicals.get(key)
+            return val if val is not None else market_ctx.get(key)
+        
+        lines = []
+        
+        # SPY performance
+        spy_5d = _get('spy_change_5d')
+        if spy_5d is not None:
+            lines.append(f"SPY 5-Day Change: {spy_5d:+.2f}%")
+        
+        # Relative strength vs SPY
+        for period in [5, 10, 20]:
+            val = _get(f'rs_vs_spy_{period}d')
+            if val is not None:
+                label = "OUTPERFORMING" if val > 0 else "UNDERPERFORMING"
+                lines.append(f"Relative Strength vs SPY ({period}d): {val:+.2f}% ({label})")
+        
+        # Sector / Industry
+        sector = _get('sector')
+        industry = _get('industry')
+        if sector:
+            lines.append(f"Sector: {sector}")
+        if industry:
+            lines.append(f"Industry: {industry}")
+        
+        return "\n".join(lines) if lines else "Data unavailable"
+    
+    def _format_recent_price_action(self, data: Dict[str, Any]) -> str:
+        """Format recent 5-day OHLCV for prompt."""
+        recent = data.get('recent_price_action', [])
+        if not recent:
+            return "Data unavailable"
+        
+        lines = ["Date       | Open    | High    | Low     | Close   | Volume"]
+        lines.append("-" * 65)
+        for day in recent:
+            date = day.get('date', 'N/A')
+            o = day.get('open', 0)
+            h = day.get('high', 0)
+            l = day.get('low', 0)
+            c = day.get('close', 0)
+            v = day.get('volume', 0)
+            lines.append(f"{date} | ${o:7.2f} | ${h:7.2f} | ${l:7.2f} | ${c:7.2f} | {v:>10,}")
+        
+        return "\n".join(lines)
     
     def _format_news(self, news: list) -> str:
         """Format news items for prompt."""

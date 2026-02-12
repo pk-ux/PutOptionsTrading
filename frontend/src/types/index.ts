@@ -258,6 +258,42 @@ export interface Technicals {
   fib_nearest_level: string | null;
   fib_nearest_price: number | null;
 
+  // Momentum Oscillators
+  ema_9: number | null;
+  price_vs_ema9: 'ABOVE' | 'BELOW' | null;
+  ema9_distance_pct: number | null;
+  stoch_k: number | null;
+  stoch_d: number | null;
+  stoch_signal: 'OVERSOLD' | 'OVERBOUGHT' | 'NEUTRAL' | 'BULLISH_CROSS' | 'BEARISH_CROSS' | null;
+  roc_5d: number | null;
+  roc_10d: number | null;
+
+  // Bollinger Bands
+  bb_upper: number | null;
+  bb_middle: number | null;
+  bb_lower: number | null;
+  bb_position: 'ABOVE_UPPER' | 'UPPER_HALF' | 'LOWER_HALF' | 'BELOW_LOWER' | null;
+  bb_squeeze: boolean | null;
+
+  // Enhanced Volume
+  vol_trend_3d_vs_20d: number | null;
+
+  // Gap Analysis
+  gap_direction: 'UP' | 'DOWN' | 'NONE' | null;
+  gap_size_pct: number | null;
+
+  // Market Context
+  rs_vs_spy_5d: number | null;
+  rs_vs_spy_10d: number | null;
+  rs_vs_spy_20d: number | null;
+  spy_change_5d: number | null;
+  sector: string | null;
+  industry: string | null;
+
+  // Post-Earnings
+  post_earnings_drift: 'UP' | 'DOWN' | 'NONE' | null;
+  days_since_earnings: number | null;
+
   // LLM-generated interpretive fields
   candle_pattern: string | null;
   overall_signal: string | null;

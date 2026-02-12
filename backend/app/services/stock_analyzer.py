@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, Union
 from datetime import datetime, timezone
 import logging
 
-from .data_fetcher import get_all_analysis_data
+from .data_fetcher import get_all_analysis_data, fetch_yahoo_analyst_ratings
 from .llm import (
     get_active_provider_or_raise,
     AnalysisError,
@@ -53,12 +53,13 @@ def get_news_for_analysis(symbol: str, limit: int = 15) -> list:
 def get_massive_extended_data(symbol: str) -> Dict[str, Any]:
     """
     Fetch extended data from Massive API (short interest, analyst ratings, earnings).
+    Only includes keys in the result when data is actually returned (not None).
     
     Args:
         symbol: Stock ticker symbol
         
     Returns:
-        Dictionary with extended data
+        Dictionary with extended data (only non-None values)
     """
     data = {}
     
@@ -70,11 +71,56 @@ def get_massive_extended_data(symbol: str) -> Dict[str, Any]:
         client = get_massive_client()
         
         if client:
-            data['short_interest'] = client.get_short_interest(symbol)
-            data['analyst_ratings'] = client.get_analyst_ratings(symbol)
-            data['earnings'] = client.get_earnings_data(symbol)
+            short_interest = client.get_short_interest(symbol)
+            if short_interest:
+                data['short_interest'] = short_interest
+            
+            analyst_ratings = client.get_analyst_ratings(symbol)
+            if analyst_ratings:
+                data['analyst_ratings'] = analyst_ratings
+            
+            earnings = client.get_earnings_data(symbol)
+            if earnings:
+                data['earnings'] = earnings
     except Exception as e:
         logger.warning(f"Failed to fetch Massive extended data for {symbol}: {e}")
+    
+    return data
+
+
+def get_yahoo_extended_data(symbol: str, yahoo_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Fetch extended data (analyst ratings, short interest) from Yahoo Finance.
+    Used as:
+      - Primary source when Alpaca is the active provider
+      - Backfill when Massive API fails to provide analyst ratings or short interest
+    
+    Short interest is extracted from the pre-fetched yahoo_data if available,
+    avoiding a redundant yf.Ticker.info call. Analyst ratings always require
+    a separate API call (recommendations_summary endpoint).
+    
+    Args:
+        symbol: Stock ticker symbol
+        yahoo_data: Pre-fetched Yahoo Finance data dict (from fetch_yahoo_data).
+                    If provided, short interest is extracted from it instead of re-fetching.
+        
+    Returns:
+        Dictionary with extended data (only non-None values)
+    """
+    data = {}
+    
+    # Analyst ratings — always requires a separate API call
+    try:
+        analyst_ratings = fetch_yahoo_analyst_ratings(symbol)
+        if analyst_ratings:
+            data['analyst_ratings'] = analyst_ratings
+    except Exception as e:
+        logger.warning(f"Failed to fetch Yahoo analyst ratings for {symbol}: {e}")
+    
+    # Short interest — use pre-extracted data from yahoo_data if available
+    short_interest = yahoo_data.get('short_interest_data') if yahoo_data else None
+    if short_interest:
+        data['short_interest'] = short_interest
     
     return data
 
@@ -215,6 +261,36 @@ def validate_analysis(analysis: Dict[str, Any], raw_data: Dict[str, Any]) -> Dic
         'fib_61_8': technicals.get('fib_61_8'),
         'fib_nearest_level': technicals.get('fib_nearest_level'),
         'fib_nearest_price': technicals.get('fib_nearest_price'),
+        # Momentum Oscillators (new)
+        'ema_9': technicals.get('ema_9'),
+        'price_vs_ema9': technicals.get('price_vs_ema9'),
+        'ema9_distance_pct': technicals.get('ema9_distance_pct'),
+        'stoch_k': technicals.get('stoch_k'),
+        'stoch_d': technicals.get('stoch_d'),
+        'stoch_signal': technicals.get('stoch_signal'),
+        'roc_5d': technicals.get('roc_5d'),
+        'roc_10d': technicals.get('roc_10d'),
+        # Bollinger Bands (new)
+        'bb_upper': technicals.get('bb_upper'),
+        'bb_middle': technicals.get('bb_middle'),
+        'bb_lower': technicals.get('bb_lower'),
+        'bb_position': technicals.get('bb_position'),
+        'bb_squeeze': technicals.get('bb_squeeze'),
+        # Enhanced Volume (new)
+        'vol_trend_3d_vs_20d': technicals.get('vol_trend_3d_vs_20d'),
+        # Gap Analysis (new)
+        'gap_direction': technicals.get('gap_direction'),
+        'gap_size_pct': technicals.get('gap_size_pct'),
+        # Market Context (new)
+        'rs_vs_spy_5d': technicals.get('rs_vs_spy_5d'),
+        'rs_vs_spy_10d': technicals.get('rs_vs_spy_10d'),
+        'rs_vs_spy_20d': technicals.get('rs_vs_spy_20d'),
+        'spy_change_5d': technicals.get('spy_change_5d'),
+        'sector': technicals.get('sector'),
+        'industry': technicals.get('industry'),
+        # Post-Earnings (new)
+        'post_earnings_drift': technicals.get('post_earnings_drift'),
+        'days_since_earnings': technicals.get('days_since_earnings'),
         # LLM-generated interpretive fields (keep as-is from LLM)
         'candle_pattern': analysis.get('candle_pattern'),
         'overall_signal': analysis.get('overall_signal'),
@@ -257,17 +333,37 @@ async def analyze_stock(
     # News from active API provider
     base_data['news'] = get_news_for_analysis(symbol)
     
-    # Extended data from Massive API (if active)
-    massive_data = get_massive_extended_data(symbol)
-    base_data.update(massive_data)
+    # Extended data (analyst ratings, short interest, earnings)
+    # Step 1: Try the primary API provider
+    if is_massive_active():
+        extended_data = get_massive_extended_data(symbol)
+        base_data.update(extended_data)
+    
+    # Step 2: Backfill any gaps with Yahoo Finance (always, regardless of provider)
+    # For Alpaca: Yahoo is the only source for analyst/short data
+    # For Massive: Yahoo fills in anything the plan doesn't cover
+    # Short interest is pre-extracted from yahoo_data (no extra API call needed)
+    yahoo_data = base_data.get('yahoo', {})
+    missing_analyst = not base_data.get('analyst_ratings')
+    missing_short = not base_data.get('short_interest')
+    
+    if missing_analyst or missing_short:
+        yahoo_extended = get_yahoo_extended_data(symbol, yahoo_data=yahoo_data)
+        if missing_analyst and yahoo_extended.get('analyst_ratings'):
+            base_data['analyst_ratings'] = yahoo_extended['analyst_ratings']
+            logger.info(f"{'Backfilled' if is_massive_active() else 'Fetched'} analyst ratings from Yahoo Finance for {symbol}")
+        if missing_short and yahoo_extended.get('short_interest'):
+            base_data['short_interest'] = yahoo_extended['short_interest']
+            logger.info(f"{'Backfilled' if is_massive_active() else 'Fetched'} short interest from Yahoo Finance for {symbol}")
     
     # Track data sources
     data_sources = ['Yahoo Finance']
     if base_data.get('news'):
-        data_sources.append('Massive API' if is_massive_active() else 'Alpaca API')
-    if base_data.get('short_interest') or base_data.get('analyst_ratings'):
-        if 'Massive API' not in data_sources:
-            data_sources.append('Massive API')
+        news_source = 'Massive API' if is_massive_active() else 'Alpaca API'
+        if news_source not in data_sources:
+            data_sources.append(news_source)
+    if is_massive_active() and 'Massive API' not in data_sources:
+        data_sources.append('Massive API')
     
     # 2. Get LLM provider
     provider = get_active_provider_or_raise(preferred_provider)

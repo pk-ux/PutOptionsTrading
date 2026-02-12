@@ -487,7 +487,7 @@ export function StockAnalysisPanel({ symbol, isOpen, onClose }: StockAnalysisPan
                     {analysis.key_metrics.current_price && (
                       <MetricItem label="Price" value={`$${analysis.key_metrics.current_price.toFixed(2)}`} />
                     )}
-                    {analysis.key_metrics.price_change_percent !== null && (
+                    {analysis.key_metrics.price_change_percent !== null && analysis.key_metrics.price_change_percent !== undefined && (
                       <MetricItem
                         label="Change"
                         value={`${analysis.key_metrics.price_change_percent >= 0 ? '+' : ''}${analysis.key_metrics.price_change_percent.toFixed(2)}%`}
@@ -503,7 +503,14 @@ export function StockAnalysisPanel({ symbol, isOpen, onClose }: StockAnalysisPan
                     {analysis.key_metrics.analyst_rating && (
                       <MetricItem label="Analyst Rating" value={analysis.key_metrics.analyst_rating} />
                     )}
-                    {analysis.key_metrics.price_target_upside !== null && (
+                    {analysis.key_metrics.short_interest_percent !== null && analysis.key_metrics.short_interest_percent !== undefined && (
+                      <MetricItem
+                        label="Short Interest"
+                        value={`${analysis.key_metrics.short_interest_percent.toFixed(2)}%`}
+                        valueClass={analysis.key_metrics.short_interest_percent > 20 ? 'text-red-400' : analysis.key_metrics.short_interest_percent > 10 ? 'text-orange-400' : 'text-white'}
+                      />
+                    )}
+                    {analysis.key_metrics.price_target_upside !== null && analysis.key_metrics.price_target_upside !== undefined && (
                       <MetricItem
                         label="Target Upside"
                         value={`${analysis.key_metrics.price_target_upside >= 0 ? '+' : ''}${analysis.key_metrics.price_target_upside.toFixed(1)}%`}
@@ -595,12 +602,73 @@ export function StockAnalysisPanel({ symbol, isOpen, onClose }: StockAnalysisPan
                       )}
                     </div>
 
+                    {/* Momentum Oscillators: Stochastic + ROC */}
+                    {(analysis.technicals.stoch_k !== null || analysis.technicals.roc_5d !== null) && (
+                      <div>
+                        <div className="text-xs text-gray-500 font-medium mb-1.5 uppercase tracking-wider">Momentum Oscillators</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {analysis.technicals.stoch_k !== null && (
+                            <div className="p-2 bg-dark-700 rounded">
+                              <div className="text-xs text-gray-500">Stochastic (14,3)</div>
+                              <div className="flex items-baseline gap-1.5">
+                                <span className={`font-medium ${
+                                  analysis.technicals.stoch_signal === 'OVERSOLD' || analysis.technicals.stoch_signal === 'BULLISH_CROSS'
+                                    ? 'text-green-400'
+                                    : analysis.technicals.stoch_signal === 'OVERBOUGHT' || analysis.technicals.stoch_signal === 'BEARISH_CROSS'
+                                    ? 'text-red-400'
+                                    : 'text-white'
+                                }`}>
+                                  %K: {analysis.technicals.stoch_k.toFixed(1)}
+                                </span>
+                                {analysis.technicals.stoch_d !== null && (
+                                  <span className="text-xs text-gray-400">%D: {analysis.technicals.stoch_d.toFixed(1)}</span>
+                                )}
+                              </div>
+                              {analysis.technicals.stoch_signal && (
+                                <span className={`inline-block text-[10px] font-medium mt-0.5 px-1.5 py-0.5 rounded ${
+                                  analysis.technicals.stoch_signal === 'OVERSOLD' ? 'bg-green-500/20 text-green-400'
+                                    : analysis.technicals.stoch_signal === 'BULLISH_CROSS' ? 'bg-green-500/20 text-green-400'
+                                    : analysis.technicals.stoch_signal === 'OVERBOUGHT' ? 'bg-red-500/20 text-red-400'
+                                    : analysis.technicals.stoch_signal === 'BEARISH_CROSS' ? 'bg-red-500/20 text-red-400'
+                                    : 'bg-gray-500/20 text-gray-400'
+                                }`}>{analysis.technicals.stoch_signal.replace('_', ' ')}</span>
+                              )}
+                            </div>
+                          )}
+                          {(analysis.technicals.roc_5d !== null || analysis.technicals.roc_10d !== null) && (
+                            <div className="p-2 bg-dark-700 rounded">
+                              <div className="text-xs text-gray-500">Rate of Change</div>
+                              <div className="space-y-0.5">
+                                {analysis.technicals.roc_5d !== null && (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-gray-400">5-day</span>
+                                    <span className={`font-medium text-xs ${analysis.technicals.roc_5d >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {analysis.technicals.roc_5d >= 0 ? '+' : ''}{analysis.technicals.roc_5d.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                )}
+                                {analysis.technicals.roc_10d !== null && (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-gray-400">10-day</span>
+                                    <span className={`font-medium text-xs ${analysis.technicals.roc_10d >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {analysis.technicals.roc_10d >= 0 ? '+' : ''}{analysis.technicals.roc_10d.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Moving Averages */}
-                    {(analysis.technicals.sma_20 !== null || analysis.technicals.sma_50 !== null || analysis.technicals.sma_200 !== null) && (
+                    {(analysis.technicals.ema_9 !== null || analysis.technicals.sma_20 !== null || analysis.technicals.sma_50 !== null || analysis.technicals.sma_200 !== null) && (
                       <div>
                         <div className="text-xs text-gray-500 font-medium mb-1.5 uppercase tracking-wider">Moving Averages</div>
                         <div className="space-y-1.5">
                           {[
+                            { label: 'EMA 9', value: analysis.technicals.ema_9, vs: analysis.technicals.price_vs_ema9, dist: analysis.technicals.ema9_distance_pct },
                             { label: 'SMA 20', value: analysis.technicals.sma_20, vs: analysis.technicals.price_vs_sma20, dist: analysis.technicals.sma20_distance_pct },
                             { label: 'SMA 50', value: analysis.technicals.sma_50, vs: analysis.technicals.price_vs_sma50, dist: analysis.technicals.sma50_distance_pct },
                             { label: 'SMA 200', value: analysis.technicals.sma_200, vs: analysis.technicals.price_vs_sma200, dist: analysis.technicals.sma200_distance_pct },
@@ -671,6 +739,40 @@ export function StockAnalysisPanel({ symbol, isOpen, onClose }: StockAnalysisPan
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Bollinger Bands */}
+                    {analysis.technicals.bb_upper !== null && (
+                      <div>
+                        <div className="text-xs text-gray-500 font-medium mb-1.5 uppercase tracking-wider">Bollinger Bands (20,2)</div>
+                        <div className="space-y-1.5">
+                          {[
+                            { label: 'Upper', value: analysis.technicals.bb_upper, color: 'text-red-300' },
+                            { label: 'Middle', value: analysis.technicals.bb_middle, color: 'text-gray-300' },
+                            { label: 'Lower', value: analysis.technicals.bb_lower, color: 'text-green-300' },
+                          ].filter(b => b.value !== null).map((band) => (
+                            <div key={band.label} className="flex items-center justify-between px-2 py-1.5 bg-dark-700 rounded">
+                              <span className="text-xs text-gray-400">{band.label}</span>
+                              <span className={`font-medium ${band.color}`}>${band.value!.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          {analysis.technicals.bb_position && (
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                              analysis.technicals.bb_position === 'ABOVE_UPPER' ? 'bg-red-500/20 text-red-400'
+                                : analysis.technicals.bb_position === 'UPPER_HALF' ? 'bg-yellow-500/20 text-yellow-400'
+                                : analysis.technicals.bb_position === 'LOWER_HALF' ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-green-500/20 text-green-400'
+                            }`}>{analysis.technicals.bb_position.replace(/_/g, ' ')}</span>
+                          )}
+                          {analysis.technicals.bb_squeeze && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                              SQUEEZE
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -774,6 +876,104 @@ export function StockAnalysisPanel({ symbol, isOpen, onClose }: StockAnalysisPan
                             }`}>{analysis.technicals.volume_signal}</span>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Enhanced Volume Trend */}
+                    {analysis.technicals.vol_trend_3d_vs_20d !== null && (
+                      <div className="p-2 bg-dark-700 rounded">
+                        <div className="text-xs text-gray-500">3-Day Volume Trend</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white">{analysis.technicals.vol_trend_3d_vs_20d.toFixed(2)}x</span>
+                          <span className="text-[10px] text-gray-400">vs 20-day avg</span>
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                            analysis.technicals.vol_trend_3d_vs_20d > 1.2 ? 'bg-green-500/20 text-green-400'
+                              : analysis.technicals.vol_trend_3d_vs_20d < 0.8 ? 'bg-red-500/20 text-red-400'
+                              : 'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {analysis.technicals.vol_trend_3d_vs_20d > 1.2 ? 'ABOVE AVG' : analysis.technicals.vol_trend_3d_vs_20d < 0.8 ? 'BELOW AVG' : 'NORMAL'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Market Context */}
+                    {(analysis.technicals.spy_change_5d !== null || analysis.technicals.rs_vs_spy_5d !== null || analysis.technicals.sector) && (
+                      <div>
+                        <div className="text-xs text-gray-500 font-medium mb-1.5 uppercase tracking-wider">Market Context</div>
+                        <div className="space-y-1.5">
+                          {analysis.technicals.sector && (
+                            <div className="flex items-center gap-2 px-2 py-1.5 bg-dark-700 rounded">
+                              <span className="text-xs text-gray-400">Sector</span>
+                              <span className="text-xs text-white font-medium">{analysis.technicals.sector}</span>
+                              {analysis.technicals.industry && (
+                                <span className="text-[10px] text-gray-500">/ {analysis.technicals.industry}</span>
+                              )}
+                            </div>
+                          )}
+                          {analysis.technicals.spy_change_5d !== null && (
+                            <div className="flex items-center justify-between px-2 py-1.5 bg-dark-700 rounded">
+                              <span className="text-xs text-gray-400">SPY 5-Day</span>
+                              <span className={`font-medium text-xs ${analysis.technicals.spy_change_5d >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {analysis.technicals.spy_change_5d >= 0 ? '+' : ''}{analysis.technicals.spy_change_5d.toFixed(2)}%
+                              </span>
+                            </div>
+                          )}
+                          {[
+                            { label: 'vs SPY 5d', value: analysis.technicals.rs_vs_spy_5d },
+                            { label: 'vs SPY 10d', value: analysis.technicals.rs_vs_spy_10d },
+                            { label: 'vs SPY 20d', value: analysis.technicals.rs_vs_spy_20d },
+                          ].filter(r => r.value !== null).map((rs) => (
+                            <div key={rs.label} className="flex items-center justify-between px-2 py-1.5 bg-dark-700 rounded">
+                              <span className="text-xs text-gray-400">{rs.label}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`font-medium text-xs ${rs.value! >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {rs.value! >= 0 ? '+' : ''}{rs.value!.toFixed(2)}%
+                                </span>
+                                <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${
+                                  rs.value! >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                                }`}>
+                                  {rs.value! >= 0 ? 'OUTPERFORM' : 'UNDERPERFORM'}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gap Alert */}
+                    {analysis.technicals.gap_direction && analysis.technicals.gap_direction !== 'NONE' && (
+                      <div className={`p-3 rounded-lg border ${
+                        analysis.technicals.gap_direction === 'UP'
+                          ? 'bg-green-500/10 border-green-500/30'
+                          : 'bg-red-500/10 border-red-500/30'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle size={14} className={analysis.technicals.gap_direction === 'UP' ? 'text-green-400' : 'text-red-400'} />
+                          <span className={`text-xs font-semibold ${analysis.technicals.gap_direction === 'UP' ? 'text-green-400' : 'text-red-400'}`}>
+                            GAP {analysis.technicals.gap_direction}: {analysis.technicals.gap_size_pct !== null ? `${Math.abs(analysis.technicals.gap_size_pct).toFixed(1)}%` : ''} in last 5 days
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Post-Earnings Drift */}
+                    {analysis.technicals.post_earnings_drift && analysis.technicals.post_earnings_drift !== 'NONE' && (
+                      <div className={`p-3 rounded-lg border ${
+                        analysis.technicals.post_earnings_drift === 'UP'
+                          ? 'bg-green-500/10 border-green-500/30'
+                          : 'bg-red-500/10 border-red-500/30'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <Calendar size={14} className={analysis.technicals.post_earnings_drift === 'UP' ? 'text-green-400' : 'text-red-400'} />
+                          <span className={`text-xs font-semibold ${analysis.technicals.post_earnings_drift === 'UP' ? 'text-green-400' : 'text-red-400'}`}>
+                            POST-EARNINGS DRIFT {analysis.technicals.post_earnings_drift}
+                          </span>
+                          {analysis.technicals.days_since_earnings !== null && (
+                            <span className="text-[10px] text-gray-400">({analysis.technicals.days_since_earnings}d ago)</span>
+                          )}
+                        </div>
                       </div>
                     )}
 
