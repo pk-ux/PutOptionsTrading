@@ -266,10 +266,12 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     # Pass api_source to enable volume fetching for Alpaca after other filters
     filtered = filter_options(options, config, api_source=active_provider)
 
-    # Track whether this symbol's options actually meet the screening criteria.
-    # When nothing qualifies we still return a "best available" fallback set so
-    # the ticker remains visible in the results dropdown (but it is excluded from
-    # the Summary and pushed to the end by the frontend).
+    # Track whether this symbol's options fully meet the screening criteria.
+    # When nothing fully qualifies, fall back to contracts that match every
+    # criterion EXCEPT the minimum annualized return so the ticker remains
+    # visible in the results dropdown (excluded from the Summary and pushed to
+    # the end by the frontend). If even that relaxed set is empty, the ticker
+    # does not appear at all.
     meets_criteria = not filtered.empty
     if filtered.empty:
         filtered = get_fallback_options(options, config, api_source=active_provider)

@@ -476,7 +476,7 @@ export function Dashboard() {
 
             {viewingUnqualified && (
               <div className="mb-3 sm:mb-4 px-3 sm:px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs sm:text-sm">
-                {selectedView} has no options matching your filter. Showing the best available contracts for reference - these are excluded from the Summary.
+                {selectedView} has no options meeting your return target. Showing contracts that match all other filter criteria for reference - these are excluded from the Summary.
               </div>
             )}
 

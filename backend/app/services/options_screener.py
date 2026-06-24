@@ -402,7 +402,12 @@ def calculate_metrics(options_chain: pd.DataFrame, current_price: float) -> pd.D
     return options_chain
 
 
-def screen_options(options_df: pd.DataFrame, config: dict, api_source: str = "massive") -> pd.DataFrame:
+def screen_options(
+    options_df: pd.DataFrame,
+    config: dict,
+    api_source: str = "massive",
+    apply_return_filter: bool = True,
+) -> pd.DataFrame:
     """
     Apply screening criteria to filter options.
     
@@ -413,9 +418,13 @@ def screen_options(options_df: pd.DataFrame, config: dict, api_source: str = "ma
         options_df: DataFrame with options data
         config: Configuration dictionary with screening criteria
         api_source: API source ("massive", "alpaca", or "yahoo")
+        apply_return_filter: When False, the minimum annualized return filter is
+            skipped (all other criteria still apply). Used to build the
+            dropdown-only set of tickers that match every criterion except
+            rate of return.
         
     Returns:
-        Filtered DataFrame with options meeting all criteria
+        Filtered DataFrame with options meeting the requested criteria
     """
     if options_df.empty:
         return options_df
@@ -436,9 +445,15 @@ def screen_options(options_df: pd.DataFrame, config: dict, api_source: str = "ma
     non_volume_conditions = (
         (options_df['open_interest'] >= strategy['min_open_interest']) &
         (options_df['delta'] >= -max_prob) &
-        (options_df['annualized_return'] >= criteria['min_annualized_return']) &
         (options_df['out_of_the_money'])
     )
+
+    # The annualized return filter is optional so callers can build a relaxed
+    # set (all criteria except rate of return) for the results dropdown.
+    if apply_return_filter:
+        non_volume_conditions &= (
+            options_df['annualized_return'] >= criteria['min_annualized_return']
+        )
     
     filtered = options_df[non_volume_conditions].copy()
     
@@ -482,13 +497,17 @@ def screen_options(options_df: pd.DataFrame, config: dict, api_source: str = "ma
 
 def get_fallback_options(options_df: pd.DataFrame, config: dict, api_source: str = "massive") -> pd.DataFrame:
     """
-    Build a "best available" set of options for a symbol whose chain does NOT
-    meet the screening criteria.
+    Build the dropdown-only set of options for a symbol whose chain does NOT
+    fully meet the screening criteria.
 
-    This is used so that the ticker still appears in the results dropdown (for
-    reference) even though it is excluded from the Summary. We restrict to
-    out-of-the-money puts (cash-secured put context) and sort the same way as
-    the main screen so the most attractive contracts surface first.
+    A ticker qualifies for the dropdown when it matches EVERY filter criterion
+    (open interest, assignment probability/delta, OTM, volume) EXCEPT the
+    minimum annualized return. This lets the ticker remain visible for
+    reference while still being excluded from the Summary (which requires all
+    criteria, including rate of return).
+
+    If no contracts pass even this relaxed set, an empty DataFrame is returned
+    and the ticker does not appear at all.
 
     Args:
         options_df: DataFrame with options data (after calculate_metrics)
@@ -496,46 +515,9 @@ def get_fallback_options(options_df: pd.DataFrame, config: dict, api_source: str
         api_source: API source ("massive", "alpaca", or "yahoo")
 
     Returns:
-        DataFrame with the top available options (may be empty)
+        DataFrame with options matching all criteria except return (may be empty)
     """
-    if options_df.empty:
-        return options_df
-
-    # Rename openInterest to open_interest if needed (parity with screen_options)
-    if 'openInterest' in options_df.columns and 'open_interest' not in options_df.columns:
-        options_df['open_interest'] = options_df['openInterest']
-
-    # Prefer OTM puts; fall back to the whole chain if there are none
-    if 'out_of_the_money' in options_df.columns:
-        fallback = options_df[options_df['out_of_the_money']].copy()
-        if fallback.empty:
-            fallback = options_df.copy()
-    else:
-        fallback = options_df.copy()
-
-    # Sort and trim BEFORE any volume fetch so we limit external API calls
-    sort_by = config['output']['sort_by']
-    sort_by = [col for col in sort_by if col in fallback.columns]
-    if sort_by:
-        fallback = fallback.sort_values(
-            by=sort_by,
-            ascending=[config['output']['sort_order'] == 'ascending'] * len(sort_by)
-        )
-    fallback = fallback.head(config['output']['max_results']).copy()
-
-    # For Alpaca, populate volume for the trimmed set so the Vol column is useful
-    is_alpaca = api_source.lower() == "alpaca"
-    if (
-        is_alpaca
-        and 'volume' in fallback.columns
-        and fallback['volume'].max() == 0
-        and 'contract_symbol' in fallback.columns
-    ):
-        contract_symbols = fallback['contract_symbol'].tolist()
-        volumes = fetch_alpaca_volumes(contract_symbols)
-        fallback['volume'] = fallback['contract_symbol'].map(volumes).fillna(0).astype(int)
-
-    return fallback
+    return screen_options(options_df, config, api_source=api_source, apply_return_filter=False)
 
 
 def format_output(filtered_df: pd.DataFrame, current_price: Optional[float] = None) -> pd.DataFrame:
