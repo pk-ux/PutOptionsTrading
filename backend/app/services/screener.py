@@ -29,6 +29,7 @@ from .options_screener import (
     get_options_chain_alpaca,
     calculate_metrics,
     screen_options as filter_options,
+    get_fallback_options,
     format_output,
     get_earnings_dividend_dates,
 )
@@ -264,6 +265,15 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     options = calculate_metrics(options, current_price)
     # Pass api_source to enable volume fetching for Alpaca after other filters
     filtered = filter_options(options, config, api_source=active_provider)
+
+    # Track whether this symbol's options actually meet the screening criteria.
+    # When nothing qualifies we still return a "best available" fallback set so
+    # the ticker remains visible in the results dropdown (but it is excluded from
+    # the Summary and pushed to the end by the frontend).
+    meets_criteria = not filtered.empty
+    if filtered.empty:
+        filtered = get_fallback_options(options, config, api_source=active_provider)
+
     formatted = format_output(filtered, current_price)
     
     if formatted.empty:
@@ -273,6 +283,7 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     results = formatted.to_dict(orient='records')
     for row in results:
         row['price_change_percent'] = price_change_percent
+        row['meets_criteria'] = meets_criteria
     
     return results, used_yahoo
 

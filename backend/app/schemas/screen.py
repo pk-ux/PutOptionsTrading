@@ -32,6 +32,7 @@ class OptionResult(BaseModel):
     volume: int
     open_interest: int
     implied_volatility: float
+    meets_criteria: bool = True  # False when shown for reference only (excluded from Summary)
 
 
 class ScreenResponse(BaseModel):

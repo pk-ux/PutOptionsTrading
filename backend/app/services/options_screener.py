@@ -480,6 +480,64 @@ def screen_options(options_df: pd.DataFrame, config: dict, api_source: str = "ma
     return filtered.head(config['output']['max_results'])
 
 
+def get_fallback_options(options_df: pd.DataFrame, config: dict, api_source: str = "massive") -> pd.DataFrame:
+    """
+    Build a "best available" set of options for a symbol whose chain does NOT
+    meet the screening criteria.
+
+    This is used so that the ticker still appears in the results dropdown (for
+    reference) even though it is excluded from the Summary. We restrict to
+    out-of-the-money puts (cash-secured put context) and sort the same way as
+    the main screen so the most attractive contracts surface first.
+
+    Args:
+        options_df: DataFrame with options data (after calculate_metrics)
+        config: Configuration dictionary
+        api_source: API source ("massive", "alpaca", or "yahoo")
+
+    Returns:
+        DataFrame with the top available options (may be empty)
+    """
+    if options_df.empty:
+        return options_df
+
+    # Rename openInterest to open_interest if needed (parity with screen_options)
+    if 'openInterest' in options_df.columns and 'open_interest' not in options_df.columns:
+        options_df['open_interest'] = options_df['openInterest']
+
+    # Prefer OTM puts; fall back to the whole chain if there are none
+    if 'out_of_the_money' in options_df.columns:
+        fallback = options_df[options_df['out_of_the_money']].copy()
+        if fallback.empty:
+            fallback = options_df.copy()
+    else:
+        fallback = options_df.copy()
+
+    # Sort and trim BEFORE any volume fetch so we limit external API calls
+    sort_by = config['output']['sort_by']
+    sort_by = [col for col in sort_by if col in fallback.columns]
+    if sort_by:
+        fallback = fallback.sort_values(
+            by=sort_by,
+            ascending=[config['output']['sort_order'] == 'ascending'] * len(sort_by)
+        )
+    fallback = fallback.head(config['output']['max_results']).copy()
+
+    # For Alpaca, populate volume for the trimmed set so the Vol column is useful
+    is_alpaca = api_source.lower() == "alpaca"
+    if (
+        is_alpaca
+        and 'volume' in fallback.columns
+        and fallback['volume'].max() == 0
+        and 'contract_symbol' in fallback.columns
+    ):
+        contract_symbols = fallback['contract_symbol'].tolist()
+        volumes = fetch_alpaca_volumes(contract_symbols)
+        fallback['volume'] = fallback['contract_symbol'].map(volumes).fillna(0).astype(int)
+
+    return fallback
+
+
 def format_output(filtered_df: pd.DataFrame, current_price: Optional[float] = None) -> pd.DataFrame:
     """Format the output DataFrame for display"""
     if filtered_df.empty:

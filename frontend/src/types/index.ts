@@ -114,6 +114,7 @@ export interface OptionResult {
   impliedVolatility?: number;
   has_earnings_before_expiry?: boolean;  // Earnings call before expiry
   has_dividend_before_expiry?: boolean;  // Ex-dividend date before expiry
+  meets_criteria?: boolean;  // False when shown for reference only (excluded from Summary, sorted last)
 }
 
 // Screen request

@@ -165,20 +165,45 @@ export function Dashboard() {
     }
   };
 
-  // Build summary from current results
+  // Build summary from current results.
+  // Tickers whose options don't meet the filter criteria are kept in the
+  // results (so they remain selectable in the dropdown) but are excluded from
+  // the Summary and ordered last.
   const buildSummary = useCallback((currentResults: Record<string, OptionResult[]>) => {
-    const symbols = Object.keys(currentResults);
-    if (symbols.length > 1) {
-      const summaryResults: OptionResult[] = [];
-      for (const symbol of symbols) {
-        if (currentResults[symbol] && currentResults[symbol].length > 0) {
-          summaryResults.push(currentResults[symbol][0]);
-        }
+    const qualified: string[] = [];
+    const unqualified: string[] = [];
+
+    for (const symbol of Object.keys(currentResults)) {
+      const rows = currentResults[symbol];
+      if (!rows || rows.length === 0) continue;
+      if (rows[0].meets_criteria === false) {
+        unqualified.push(symbol);
+      } else {
+        qualified.push(symbol);
       }
-      setResults({ ...currentResults, Summary: summaryResults });
-      setSelectedView('Summary');
-    } else if (symbols.length === 1) {
-      setSelectedView(symbols[0]);
+    }
+
+    // Reorder results so qualified tickers come first, unqualified last
+    const ordered: Record<string, OptionResult[]> = {};
+    for (const symbol of [...qualified, ...unqualified]) {
+      ordered[symbol] = currentResults[symbol];
+    }
+
+    const totalSymbols = qualified.length + unqualified.length;
+
+    if (totalSymbols > 1) {
+      const summaryResults = qualified.map((symbol) => currentResults[symbol][0]);
+      if (summaryResults.length > 0) {
+        setResults({ ...ordered, Summary: summaryResults });
+        setSelectedView('Summary');
+      } else {
+        // No ticker met the criteria - show the first one instead of an empty Summary
+        setResults(ordered);
+        setSelectedView(unqualified[0]);
+      }
+    } else if (totalSymbols === 1) {
+      setResults(ordered);
+      setSelectedView([...qualified, ...unqualified][0]);
     }
   }, [setResults, setSelectedView]);
 
@@ -294,6 +319,12 @@ export function Dashboard() {
   }
 
   const currentResults = results[selectedView] || [];
+
+  // A ticker is "unqualified" when its options don't meet the filter criteria.
+  // These are still shown for reference (excluded from Summary, ordered last).
+  const isUnqualified = (symbol: string) =>
+    symbol !== 'Summary' && results[symbol]?.[0]?.meets_criteria === false;
+  const viewingUnqualified = isUnqualified(selectedView);
 
   return (
     <div className="flex h-screen">
@@ -431,7 +462,7 @@ export function Dashboard() {
                   >
                     {viewOptions.map((option) => (
                       <option key={option} value={option}>
-                        {option}
+                        {option}{isUnqualified(option) ? ' (no match)' : ''}
                       </option>
                     ))}
                   </select>
@@ -442,6 +473,12 @@ export function Dashboard() {
                 </div>
               )}
             </div>
+
+            {viewingUnqualified && (
+              <div className="mb-3 sm:mb-4 px-3 sm:px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs sm:text-sm">
+                {selectedView} has no options matching your filter. Showing the best available contracts for reference - these are excluded from the Summary.
+              </div>
+            )}
 
             <ResultsTable data={currentResults} title={selectedView} onAnalyze={handleAnalyze} />
 
