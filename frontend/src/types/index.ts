@@ -414,3 +414,61 @@ export interface AISettingsUpdate {
   cache_enabled?: boolean;
   cache_ttl_seconds?: number;
 }
+
+// ============================================================
+// Breakout Scanner (Momentum Stocks)
+// ============================================================
+
+export interface BreakoutScannerSettings {
+  enabled: boolean;
+  universe: string[];
+  top_n: number;
+  deep_dive_n: number;
+  use_unusual_whales: boolean;
+  weights: Record<string, number>;
+  min_price: number;
+  max_price: number;
+  min_avg_volume: number;
+  require_above_sma200: boolean;
+  typical_csp_dte: number;
+  last_run_at: string | null;
+  last_run_status: string;
+  last_run_message: string | null;
+  updated_at: string | null;
+  unusual_whales_configured: boolean;
+}
+
+export interface BreakoutScannerSettingsUpdate {
+  enabled?: boolean;
+  universe?: string[];
+  top_n?: number;
+  deep_dive_n?: number;
+  use_unusual_whales?: boolean;
+  weights?: Record<string, number>;
+  min_price?: number;
+  max_price?: number;
+  min_avg_volume?: number;
+  require_above_sma200?: boolean;
+  typical_csp_dte?: number;
+}
+
+export interface BreakoutScanResultItem {
+  symbol: string;
+  score: number;
+  rank: number;
+  setup_type: string | null;
+  pivot_price: number | null;
+  current_price: number | null;
+  iv_rank: number | null;
+  implied_move: number | null;
+  net_call_premium: number | null;
+  bullish_flow_score: number | null;
+  gex_regime: string | null;
+  dark_pool_accum: boolean;
+  smart_money: boolean;
+  next_earnings_date: string | null;
+  earnings_flag: boolean;
+  suggested_put_strike: number | null;
+  factor_breakdown: Record<string, number>;
+  run_at: string | null;
+}

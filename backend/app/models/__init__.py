@@ -7,5 +7,6 @@ from .api_provider_settings import ApiProviderSettings
 from .market_settings import MarketSettings
 from .ai_settings import AISettings
 from .analysis_cache import AnalysisCache
+from .breakout_scanner import BreakoutScannerSettings, BreakoutScanResult
 
-__all__ = ["User", "UserSettings", "Filter", "TradeIdea", "CacheSettings", "ApiProviderSettings", "MarketSettings", "AISettings", "AnalysisCache"]
+__all__ = ["User", "UserSettings", "Filter", "TradeIdea", "CacheSettings", "ApiProviderSettings", "MarketSettings", "AISettings", "AnalysisCache", "BreakoutScannerSettings", "BreakoutScanResult"]

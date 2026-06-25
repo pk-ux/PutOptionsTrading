@@ -24,6 +24,9 @@ import type {
   AnalysisError,
   AISettings,
   AISettingsUpdate,
+  BreakoutScannerSettings,
+  BreakoutScannerSettingsUpdate,
+  BreakoutScanResultItem,
 } from '@/types';
 
 // Get API base URL from environment or default to relative path
@@ -308,6 +311,34 @@ export const apiClient = {
   // Update AI settings (admin only)
   async updateAISettings(settings: AISettingsUpdate): Promise<AISettings> {
     const response = await api.put('/api/v1/analyze/settings', settings);
+    return response.data;
+  },
+
+  // Breakout Scanner (admin only)
+  async getBreakoutSettings(): Promise<BreakoutScannerSettings> {
+    const response = await api.get('/api/v1/admin/breakout-scanner');
+    return response.data;
+  },
+
+  async updateBreakoutSettings(
+    settings: BreakoutScannerSettingsUpdate
+  ): Promise<BreakoutScannerSettings> {
+    const response = await api.put('/api/v1/admin/breakout-scanner', settings);
+    return response.data;
+  },
+
+  async runBreakoutScan(): Promise<{ status: string; message: string }> {
+    const response = await api.post('/api/v1/admin/breakout-scanner/run');
+    return response.data;
+  },
+
+  async resetBreakoutStatus(): Promise<BreakoutScannerSettings> {
+    const response = await api.post('/api/v1/admin/breakout-scanner/reset');
+    return response.data;
+  },
+
+  async getBreakoutResults(): Promise<{ results: BreakoutScanResultItem[] }> {
+    const response = await api.get('/api/v1/admin/breakout-scanner/results');
     return response.data;
   },
 };

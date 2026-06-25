@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     ALPACA_API_KEY: Optional[str] = None
     ALPACA_SECRET_KEY: Optional[str] = None
     
+    # Unusual Whales API (Breakout Scanner smart-money/flow layer)
+    UNUSUAL_WHALES_API_KEY: Optional[str] = None
+    
     # LLM Providers for AI Analysis
     GEMINI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None

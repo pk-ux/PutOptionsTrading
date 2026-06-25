@@ -15,6 +15,7 @@ import { CacheSettingsCard } from '@/components/CacheSettingsCard';
 import { ApiProviderCard } from '@/components/ApiProviderCard';
 import { MarketSettingsCard } from '@/components/MarketSettingsCard';
 import { AISettingsCard } from '@/components/AISettingsCard';
+import { BreakoutScannerCard } from '@/components/BreakoutScannerCard';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
@@ -451,6 +452,11 @@ export function Admin() {
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CacheSettingsCard isReady={isReady} />
         <AISettingsCard isReady={isReady} />
+      </div>
+
+      {/* Breakout Scanner (Momentum Stocks) */}
+      <div className="mt-6">
+        <BreakoutScannerCard isReady={isReady} onScanComplete={loadData} />
       </div>
     </div>
   );

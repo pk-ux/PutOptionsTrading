@@ -427,6 +427,87 @@ If issues occur:
 | `GET /api/v1/settings` | Now includes `selected_filter_id` and `selected_trade_idea_id` |
 | `PUT /api/v1/settings` | Can now update `selected_filter_id` and `selected_trade_idea_id` |
 
+---
+
+# Breakout Scanner (Momentum Stocks)
+
+The Breakout Scanner is a self-contained module
+(`backend/app/modules/breakout_scanner/`) that ranks a user-defined ticker
+universe by a 0-100 **Breakout Readiness Score** built from leading indicators
+(volatility compression / VCP, relative strength, pivot proximity) plus a
+first-class Unusual Whales smart-money layer (options flow, OI accumulation,
+dealer GEX, dark-pool blocks, insider/congress buying, native IV rank). It
+publishes the top picks into the **"Momentum Stocks"** system Trade Idea.
+
+## Deploy / migrate
+
+1. **Database** – two new tables are created automatically on startup via
+   `init_db()` (`Base.metadata.create_all`): `breakout_scanner_settings` and
+   `breakout_scan_results`. No manual migration needed.
+2. **Environment variable** – add the Unusual Whales API key (optional; the
+   scanner still runs on price structure alone without it):
+
+   ```bash
+   # Railway / .env
+   UNUSUAL_WHALES_API_KEY=your_key_here
+   ```
+
+   > Security: store the key only in environment variables. If a key has been
+   > shared in plain text, rotate it in the Unusual Whales dashboard.
+3. **Dependencies** – no new packages (uses the existing `httpx`, `numpy`,
+   `yfinance`).
+4. **Configure the universe** – in the Admin dashboard, open the **Breakout
+   Scanner** card, paste your tickers, save, then **Run Scan**.
+
+## Running the scan
+
+- **Manually from the UI**: Admin → Breakout Scanner → *Run Scan* (executes as a
+  background task; the card polls for status and shows ranked results).
+- **From the CLI**:
+
+  ```bash
+  cd backend
+  python -m scripts.run_breakout_scan
+  ```
+
+## Scheduling (cron)
+
+Run daily after the close (e.g. 4:30pm ET). Use the universe/config stored in the
+database, so the cron just invokes the script.
+
+**Railway** – add a separate *Cron* service (or a scheduled job) pointing at the
+backend image with:
+
+```
+Schedule (UTC):  30 21 * * 1-5
+Command:         python -m scripts.run_breakout_scan
+```
+
+**Generic crontab** (any host):
+
+```cron
+# 4:30pm ET on weekdays (adjust for your server timezone)
+30 16 * * 1-5 cd /app/backend && /usr/bin/python -m scripts.run_breakout_scan >> /var/log/breakout_scan.log 2>&1
+```
+
+## New API endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/admin/breakout-scanner` | GET | Get scanner settings + last-run status (admin) |
+| `/api/v1/admin/breakout-scanner` | PUT | Update universe + config (admin) |
+| `/api/v1/admin/breakout-scanner/run` | POST | Trigger a scan as a background job (admin) |
+| `/api/v1/admin/breakout-scanner/results` | GET | Get the latest ranked results (admin) |
+
+## Removing the feature
+
+Delete `backend/app/modules/breakout_scanner/`, the `breakout_scanner` router
+include in `app/api/v1/router.py`, the two models in
+`app/models/breakout_scanner.py` (and their registration in
+`app/models/__init__.py` and `app/core/database.py`), the `BreakoutScannerCard`
+in the frontend (and its mount in `Admin.tsx`), and
+`backend/scripts/run_breakout_scan.py`. No other feature depends on it.
+
 ## Questions?
 
 If you encounter issues not covered here, please check:

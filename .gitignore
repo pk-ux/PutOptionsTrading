@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Local dev server logs (restart-dev-servers skill)
+.dev-logs/
+
 # Python cache and compiled files
 __pycache__/
 *.py[co]
