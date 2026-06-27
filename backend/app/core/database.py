@@ -59,4 +59,10 @@ def init_db() -> None:
         AnalysisCache, BreakoutScannerSettings, BreakoutScanResult
     )
     Base.metadata.create_all(bind=engine)
+    # Lightweight column adds for tables that already existed before a model change.
+    try:
+        from ..modules.breakout_scanner.integration import ensure_schema
+        ensure_schema()
+    except Exception:
+        pass  # breakout scanner module optional at bootstrap
     print(f"Database initialized: {db_url.split('@')[-1] if '@' in db_url else db_url}")

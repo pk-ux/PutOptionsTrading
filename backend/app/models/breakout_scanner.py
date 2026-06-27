@@ -55,6 +55,7 @@ class BreakoutScannerSettings(Base):
     last_run_at = Column(DateTime, nullable=True)
     last_run_status = Column(String(20), default="idle", nullable=False)  # idle|running|success|error
     last_run_message = Column(Text, nullable=True)
+    last_market_context = Column(Text, nullable=True)  # JSON snapshot of regime/fear-greed
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -68,6 +69,14 @@ class BreakoutScannerSettings(Base):
             return {}
         try:
             return json.loads(self.weights)
+        except (ValueError, TypeError):
+            return {}
+
+    def get_market_context(self) -> Dict[str, Any]:
+        if not self.last_market_context:
+            return {}
+        try:
+            return json.loads(self.last_market_context)
         except (ValueError, TypeError):
             return {}
 
@@ -87,6 +96,7 @@ class BreakoutScannerSettings(Base):
             "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
             "last_run_status": self.last_run_status,
             "last_run_message": self.last_run_message,
+            "market_context": self.get_market_context(),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
@@ -106,11 +116,18 @@ class BreakoutScanResult(Base):
     pivot_price = Column(Float, nullable=True)
     current_price = Column(Float, nullable=True)
 
+    breakout_trigger = Column(Boolean, default=False, nullable=False)
+    volume_expansion = Column(Float, nullable=True)
+    pct_from_52wk_high = Column(Float, nullable=True)
+
     iv_rank = Column(Float, nullable=True)
     implied_move = Column(Float, nullable=True)
+    iv_vs_realized = Column(Float, nullable=True)
     net_call_premium = Column(Float, nullable=True)
     bullish_flow_score = Column(Float, nullable=True)
     gex_regime = Column(String(20), nullable=True)
+    gamma_wall = Column(Float, nullable=True)
+    max_pain = Column(Float, nullable=True)
     dark_pool_accum = Column(Boolean, default=False, nullable=False)
     smart_money = Column(Boolean, default=False, nullable=False)
     next_earnings_date = Column(String(20), nullable=True)
@@ -136,11 +153,17 @@ class BreakoutScanResult(Base):
             "setup_type": self.setup_type,
             "pivot_price": self.pivot_price,
             "current_price": self.current_price,
+            "breakout_trigger": self.breakout_trigger,
+            "volume_expansion": self.volume_expansion,
+            "pct_from_52wk_high": self.pct_from_52wk_high,
             "iv_rank": self.iv_rank,
             "implied_move": self.implied_move,
+            "iv_vs_realized": self.iv_vs_realized,
             "net_call_premium": self.net_call_premium,
             "bullish_flow_score": self.bullish_flow_score,
             "gex_regime": self.gex_regime,
+            "gamma_wall": self.gamma_wall,
+            "max_pain": self.max_pain,
             "dark_pool_accum": self.dark_pool_accum,
             "smart_money": self.smart_money,
             "next_earnings_date": self.next_earnings_date,

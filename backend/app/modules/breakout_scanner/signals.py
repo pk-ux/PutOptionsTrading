@@ -208,8 +208,142 @@ def atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 1
     return float(np.mean(tr[-period:]))
 
 
+def adr_pct(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 20) -> Optional[float]:
+    """Average daily range as a percent of price - a liquidity/tradability gate.
+
+    Stocks that barely move are poor breakout candidates; ones that move too
+    violently are noise. Returned as a percent (e.g. 3.5 == 3.5%).
+    """
+    if len(closes) < period + 1:
+        return None
+    rng = (highs[-period:] - lows[-period:])
+    base = closes[-period:]
+    base = np.where(base <= 0, np.nan, base)
+    pct = np.nanmean(rng / base) * 100.0
+    if pct != pct:  # NaN
+        return None
+    return float(pct)
+
+
+def volume_expansion(volumes: np.ndarray, long: int = 50) -> Dict[str, Any]:
+    """Breakout *confirmation* - is volume expanding vs the base average?
+
+    The opposite of ``volume_dryup``: a real breakout fires on a surge of volume.
+    Returns the most-recent-day volume ratio vs the ``long``-day average plus a
+    0..1 expansion score (ratio 2x -> 1.0).
+    """
+    if len(volumes) < long:
+        return {"ratio": 1.0, "score": 0.0}
+    recent = float(volumes[-1])
+    base = float(np.mean(volumes[-long:]))
+    if base <= 0:
+        return {"ratio": 1.0, "score": 0.0}
+    ratio = recent / base
+    score = _clip01((ratio - 1.0) / 1.0)  # 1x -> 0, 2x -> 1.0
+    return {"ratio": float(ratio), "score": score}
+
+
+def fifty_two_week(highs: np.ndarray, closes: np.ndarray, lookback: int = 252) -> Dict[str, Any]:
+    """Proximity to the 52-week high. The best breakouts emerge near new highs.
+
+    Returns the pct below the 52wk high (smaller is better) and a 0..1 proximity
+    score that peaks within ~0-15% of the high and decays beyond.
+    """
+    if len(highs) < 20:
+        return {"pct_from_high": None, "near_high": 0.0}
+    window = highs[-lookback:] if len(highs) >= lookback else highs
+    high_52 = float(np.max(window))
+    price = float(closes[-1])
+    if high_52 <= 0:
+        return {"pct_from_high": None, "near_high": 0.0}
+    pct_from = (high_52 - price) / high_52  # >=0
+    if pct_from <= 0.15:
+        near = 1.0 - (pct_from / 0.15) * 0.3  # 0% -> 1.0, 15% -> 0.7
+    elif pct_from <= 0.35:
+        near = _clip01(0.7 - (pct_from - 0.15) / 0.20 * 0.6)
+    else:
+        near = 0.05
+    return {"pct_from_high": float(pct_from * 100.0), "near_high": _clip01(near)}
+
+
+def base_quality(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, window: int = 40) -> float:
+    """Quality of the consolidation base: shallow, tight bases break out cleaner.
+
+    Rewards a shallow base depth (peak-to-trough range over the window) and price
+    sitting in the upper portion of the base (accumulation, not distribution).
+    """
+    if len(closes) < window:
+        return 0.0
+    seg_h = highs[-window:]
+    seg_l = lows[-window:]
+    top = float(np.max(seg_h))
+    bottom = float(np.min(seg_l))
+    if top <= 0 or top <= bottom:
+        return 0.0
+    depth = (top - bottom) / top
+    depth_score = _clip01(1.0 - depth / 0.35)  # 0% deep -> 1.0, 35%+ -> 0
+    price = float(closes[-1])
+    pos_in_base = (price - bottom) / (top - bottom)  # 0 bottom, 1 top
+    pos_score = _clip01(pos_in_base)
+    return _clip01(0.6 * depth_score + 0.4 * pos_score)
+
+
+def realized_vol(closes: np.ndarray, period: int = 20) -> Optional[float]:
+    """Annualized realized volatility (%) from daily log returns."""
+    if len(closes) < period + 1:
+        return None
+    window = closes[-period - 1:]
+    rets = np.diff(window) / window[:-1]
+    if len(rets) < 2:
+        return None
+    vol = float(np.std(rets) * np.sqrt(252) * 100.0)
+    return vol if vol == vol else None
+
+
+def breakout_trigger(
+    closes: np.ndarray,
+    pivot: Optional[float],
+    vol_ratio: float,
+    vol_mult: float = 1.5,
+    max_extension: float = 0.10,
+) -> bool:
+    """Confirmed-breakout trigger: price closed above the pivot on expanding
+    volume and is not already badly extended above it.
+    """
+    if not pivot or pivot <= 0 or len(closes) == 0:
+        return False
+    price = float(closes[-1])
+    if price <= pivot:
+        return False
+    if (price - pivot) / pivot > max_extension:
+        return False  # already ran away from the pivot
+    return vol_ratio >= vol_mult
+
+
+def rs_line_new_high(closes: np.ndarray, spy_closes: Optional[np.ndarray], lookback: int = 60) -> bool:
+    """Is the relative-strength line (stock / SPY) making a new high?
+
+    A leading RS line that breaks out *before* price is a hallmark of the
+    strongest breakout candidates.
+    """
+    if spy_closes is None or len(spy_closes) < 20 or len(closes) < 20:
+        return False
+    n = min(len(closes), len(spy_closes), lookback + 1)
+    if n < 10:
+        return False
+    s = closes[-n:]
+    m = spy_closes[-n:]
+    m = np.where(m <= 0, np.nan, m)
+    rs_line = s / m
+    if np.isnan(rs_line).all():
+        return False
+    return bool(rs_line[-1] >= np.nanmax(rs_line) * 0.999)
+
+
 def classify_setup(sig: Dict[str, float]) -> str:
     """Human-readable setup label from the computed structure signals."""
+    if sig.get("breakout_trigger"):
+        return "confirmed_breakout"
     if sig.get("compression", 0) > 0.6 and sig.get("squeeze"):
         if sig.get("pivot", 0) > 0.6:
             return "squeeze_breakout_setup"
@@ -240,7 +374,10 @@ def compute_structure_signals(
 
     comp = bollinger_compression(closes)
     pivot = detect_pivot(highs, closes)
+    sma50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else None
     sma200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else None
+    vol_exp = volume_expansion(volumes)
+    high52 = fifty_two_week(highs, closes)
 
     sig: Dict[str, Any] = {
         "compression": comp["compression"],
@@ -249,12 +386,26 @@ def compute_structure_signals(
         "vcp": vcp_contraction(highs, lows),
         "volume_dryup": volume_dryup(volumes),
         "rs_raw": relative_strength(closes, spy_closes),
+        "rs_new_high": rs_line_new_high(closes, spy_closes),
         "pivot": pivot_proximity(current_price, pivot),
+        # breakout confirmation
+        "volume_expansion": vol_exp["score"],
+        "vol_ratio": vol_exp["ratio"],
+        "breakout_trigger": breakout_trigger(closes, pivot, vol_exp["ratio"]),
+        # base / leadership context
+        "near_52wk_high": high52["near_high"],
+        "pct_from_52wk_high": high52["pct_from_high"],
+        "base_quality": base_quality(highs, lows, closes),
         # context
         "current_price": current_price,
         "avg_volume": float(np.mean(volumes[-20:])) if len(volumes) >= 20 else float(np.mean(volumes)),
+        "avg_volume_50": float(np.mean(volumes[-50:])) if len(volumes) >= 50 else None,
         "pivot_price": pivot,
         "atr": atr(highs, lows, closes),
+        "adr_pct": adr_pct(highs, lows, closes),
+        "realized_vol": realized_vol(closes),
+        "above_sma50": (sma50 is not None and current_price > sma50),
+        "sma50": sma50,
         "above_sma200": (sma200 is not None and current_price > sma200),
         "sma200": sma200,
     }

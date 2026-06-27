@@ -12,10 +12,13 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
+from sqlalchemy import inspect as sa_inspect, text
+
 from ...core.config import get_settings
-from ...core.database import SessionLocal
+from ...core.database import SessionLocal, engine
 from ...models import BreakoutScannerSettings, BreakoutScanResult, TradeIdea
 from . import run_scan
+from .providers.alpaca_provider import AlpacaPriceProvider
 from .providers.unusual_whales import UnusualWhalesProvider
 from .providers.yahoo_provider import YahooPriceProvider
 from .types import ScannerConfig
@@ -32,8 +35,55 @@ MOMENTUM_TRADE_IDEA_DESCRIPTION = (
 STALE_RUNNING_MINUTES = 15
 
 
+# New columns added by the scanner upgrade. The app uses create_all (no Alembic),
+# so on an already-provisioned DB we add any missing columns defensively here.
+# (name -> SQL type valid for both SQLite and Postgres)
+_RESULT_COLUMNS = {
+    "breakout_trigger": "BOOLEAN",
+    "volume_expansion": "FLOAT",
+    "pct_from_52wk_high": "FLOAT",
+    "iv_vs_realized": "FLOAT",
+    "gamma_wall": "FLOAT",
+    "max_pain": "FLOAT",
+}
+_SETTINGS_COLUMNS = {
+    "last_market_context": "TEXT",
+}
+
+_schema_ready = False
+
+
+def ensure_schema() -> None:
+    """Add any missing columns introduced by the upgrade (idempotent)."""
+    global _schema_ready
+    if _schema_ready:
+        return
+    try:
+        inspector = sa_inspect(engine)
+        tables = inspector.get_table_names()
+        plans = [
+            ("breakout_scan_results", _RESULT_COLUMNS),
+            ("breakout_scanner_settings", _SETTINGS_COLUMNS),
+        ]
+        with engine.begin() as conn:
+            for table, columns in plans:
+                if table not in tables:
+                    continue  # create_all will build it fresh with all columns
+                existing = {c["name"] for c in inspector.get_columns(table)}
+                for name, sqltype in columns.items():
+                    if name not in existing:
+                        conn.execute(
+                            text(f'ALTER TABLE {table} ADD COLUMN {name} {sqltype}')
+                        )
+                        logger.info(f"Added column {table}.{name}")
+        _schema_ready = True
+    except Exception as e:  # pragma: no cover - best-effort migration
+        logger.warning(f"ensure_schema failed (continuing): {e}")
+
+
 def get_or_create_settings(db) -> BreakoutScannerSettings:
     """Fetch the singleton settings row, creating it with defaults if missing."""
+    ensure_schema()
     settings = db.query(BreakoutScannerSettings).filter(
         BreakoutScannerSettings.id == 1
     ).first()
@@ -138,11 +188,17 @@ def _persist_results(db, result) -> None:
                 setup_type=c.setup_type,
                 pivot_price=c.pivot_price,
                 current_price=c.current_price,
+                breakout_trigger=bool(c.breakout_trigger),
+                volume_expansion=c.volume_expansion,
+                pct_from_52wk_high=c.pct_from_52wk_high,
                 iv_rank=c.iv_rank,
                 implied_move=c.implied_move,
+                iv_vs_realized=c.iv_vs_realized,
                 net_call_premium=c.net_call_premium,
                 bullish_flow_score=c.bullish_flow_score,
                 gex_regime=c.gex_regime,
+                gamma_wall=c.gamma_wall,
+                max_pain=c.max_pain,
                 dark_pool_accum=c.dark_pool_accum,
                 smart_money=c.smart_money,
                 next_earnings_date=c.next_earnings_date,
@@ -163,6 +219,7 @@ def run_and_publish() -> Dict[str, Any]:
     db = SessionLocal()
     settings_row = None
     try:
+        ensure_schema()
         settings_row = get_or_create_settings(db)
         universe = settings_row.get_universe_list()
         if not universe:
@@ -173,8 +230,25 @@ def run_and_publish() -> Dict[str, Any]:
 
         config = _build_config(settings_row)
 
-        # Providers
-        price_provider = YahooPriceProvider()
+        # Providers: prefer Alpaca daily bars (reliable, consistent with the rest
+        # of the app); fall back to Yahoo when Alpaca keys are unavailable.
+        app_settings = get_settings()
+        price_provider = None
+        if app_settings.ALPACA_API_KEY and app_settings.ALPACA_SECRET_KEY:
+            alpaca_provider = AlpacaPriceProvider(
+                app_settings.ALPACA_API_KEY, app_settings.ALPACA_SECRET_KEY
+            )
+            if alpaca_provider.is_available():
+                price_provider = alpaca_provider
+        # Indices/^VIX for market context always come from Yahoo (Alpaca can't
+        # supply ^VIX). When Yahoo is already the universe provider, reuse it.
+        index_provider = None
+        if price_provider is None:
+            price_provider = YahooPriceProvider()
+            logger.info("Breakout scan using Yahoo price provider")
+        else:
+            index_provider = YahooPriceProvider()
+            logger.info("Breakout scan using Alpaca price provider (Yahoo for indices/VIX)")
         uw_provider = None
         if config.use_unusual_whales:
             uw_key = get_settings().UNUSUAL_WHALES_API_KEY
@@ -190,6 +264,7 @@ def run_and_publish() -> Dict[str, Any]:
             config=config,
             price_provider=price_provider,
             uw_provider=uw_provider,
+            index_provider=index_provider,
             logger=logger,
         )
 
@@ -199,10 +274,18 @@ def run_and_publish() -> Dict[str, Any]:
         _persist_results(db, result)
         _publish_trade_idea(db, result.top_symbols)
 
+        # Persist the market-context snapshot for the admin UI.
+        try:
+            settings_row.last_market_context = json.dumps(result.market_context or {})
+        except (TypeError, ValueError):
+            settings_row.last_market_context = None
+
+        regime = (result.market_context or {}).get("regime")
         msg = (
             f"Scanned {result.scanned}/{result.universe_size} tickers, "
             f"published {len(result.candidates)} picks"
             + (" (UW active)" if result.used_unusual_whales else " (no UW)")
+            + (f" | regime: {regime}" if regime else "")
         )
         if result.warnings:
             msg += " | " + "; ".join(result.warnings)

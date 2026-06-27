@@ -259,6 +259,11 @@ export function Admin() {
         </button>
       </div>
 
+      {/* Breakout Scanner (Momentum Stocks) */}
+      <div className="mb-6">
+        <BreakoutScannerCard isReady={isReady} onScanComplete={loadData} />
+      </div>
+
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* System Trade Ideas */}
@@ -454,10 +459,6 @@ export function Admin() {
         <AISettingsCard isReady={isReady} />
       </div>
 
-      {/* Breakout Scanner (Momentum Stocks) */}
-      <div className="mt-6">
-        <BreakoutScannerCard isReady={isReady} onScanComplete={loadData} />
-      </div>
     </div>
   );
 }

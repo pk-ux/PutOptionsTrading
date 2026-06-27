@@ -18,19 +18,27 @@ import numpy as np
 
 from . import signals as S
 from . import uw_signals as UW
+from .market_context import compute_market_context
 from .scoring import score_candidates
 from .types import ScanCandidate, ScanResult, ScannerConfig
 
 
 def _preliminary_score(sig: Dict[str, Any]) -> float:
-    """Cheap structure-only score to pick deep-dive survivors."""
+    """Cheap structure-only score to pick deep-dive survivors.
+
+    Now nudged by breakout confirmation and 52wk-high proximity so released
+    leaders preferentially earn the expensive Stage-2 UW calls.
+    """
     return (
-        0.4 * float(sig.get("compression") or 0)
-        + 0.25 * float(sig.get("vcp") or 0)
-        + 0.15 * float(sig.get("nr_tightness") or 0)
-        + 0.1 * float(sig.get("volume_dryup") or 0)
-        + 0.1 * float(sig.get("pivot") or 0)
-        + (0.1 if sig.get("squeeze") else 0)
+        0.30 * float(sig.get("compression") or 0)
+        + 0.20 * float(sig.get("vcp") or 0)
+        + 0.12 * float(sig.get("nr_tightness") or 0)
+        + 0.08 * float(sig.get("volume_dryup") or 0)
+        + 0.10 * float(sig.get("pivot") or 0)
+        + 0.10 * float(sig.get("near_52wk_high") or 0)
+        + 0.10 * float(sig.get("volume_expansion") or 0)
+        + (0.10 if sig.get("breakout_trigger") else 0)
+        + (0.08 if sig.get("squeeze") else 0)
     )
 
 
@@ -55,6 +63,7 @@ def run_scan(
     config: Optional[ScannerConfig] = None,
     price_provider=None,
     uw_provider=None,
+    index_provider=None,
     logger: Optional[logging.Logger] = None,
 ) -> ScanResult:
     """Run a breakout scan over ``tickers`` and return a ranked ``ScanResult``."""
@@ -120,6 +129,13 @@ def run_scan(
             continue
         if avg_vol < config.min_avg_volume:
             continue
+        # Liquidity floor: enough dollars trade to enter/exit cleanly.
+        if config.min_dollar_volume > 0 and (price * avg_vol) < config.min_dollar_volume:
+            continue
+        # Tradability floor: drop near-dead names that barely move.
+        adr = sig.get("adr_pct")
+        if config.min_adr_pct > 0 and adr is not None and adr < config.min_adr_pct:
+            continue
         if config.require_above_sma200 and not sig.get("above_sma200"):
             continue
 
@@ -134,15 +150,27 @@ def run_scan(
             "vcp": sig.get("vcp"),
             "volume_dryup": sig.get("volume_dryup"),
             "rs_raw": sig.get("rs_raw"),
+            "rs_new_high": sig.get("rs_new_high"),
             "pivot": sig.get("pivot"),
+            # breakout confirmation + leadership
+            "volume_expansion": sig.get("volume_expansion"),
+            "vol_ratio": sig.get("vol_ratio"),
+            "breakout_trigger": sig.get("breakout_trigger"),
+            "near_52wk_high": sig.get("near_52wk_high"),
+            "pct_from_52wk_high": sig.get("pct_from_52wk_high"),
+            "base_quality": sig.get("base_quality"),
             # context
             "current_price": price,
             "pivot_price": sig.get("pivot_price"),
             "atr": sig.get("atr"),
+            "adr_pct": adr,
+            "realized_vol": sig.get("realized_vol"),
+            "above_sma50": sig.get("above_sma50"),
             "setup_type": sig.get("setup_type"),
             # UW screener-derived
             "iv_rank": metrics.get("iv_rank"),
             "implied_move": metrics.get("implied_move"),
+            "iv_vs_realized": UW.iv_vs_realized(metrics.get("implied_move"), sig.get("realized_vol")),
             "net_call_premium": metrics.get("net_call_premium"),
             "net_put_premium": metrics.get("net_put_premium"),
             "bullish_premium": metrics.get("bullish_premium"),
@@ -153,12 +181,17 @@ def run_scan(
             "flow_bullishness": 0.0,
             "gex_score": 0.0,
             "gex_regime": None,
+            "gamma_wall": None,
+            "gamma_wall_pressure": 0.0,
+            "wall_distance": None,
+            "max_pain": None,
             "darkpool_premium": 0.0,
             "darkpool_accum": False,
             "smart_money_score": 0.0,
             "smart_money_flag": False,
             "seasonality": None,
             "earnings_flag": UW.earnings_within(metrics.get("next_earnings_date"), config.typical_csp_dte),
+            "_deep": False,
             "_prelim": 0.0,
         }
         feat["_prelim"] = _preliminary_score(sig)
@@ -170,25 +203,76 @@ def run_scan(
         return result
 
     # --- Stage 2: deep-dive UW calls on the strongest structures ---
+    deep: List[Dict[str, Any]] = []
     if uw_active:
         features.sort(key=lambda f: f["_prelim"], reverse=True)
         deep = features[: max(config.deep_dive_n, config.top_n)]
         for f in deep:
+            f["_deep"] = True
             sym = f["symbol"]
+            price = f.get("current_price")
+
+            # Multi-day flow first (more robust), falling back to flow alerts.
+            flow_set = False
+            ticks_fn = getattr(uw_provider, "net_prem_ticks", None)
+            if callable(ticks_fn):
+                try:
+                    fb = UW.flow_from_ticks(ticks_fn(sym))
+                    if fb is not None:
+                        f["flow_bullishness"] = fb
+                        flow_set = True
+                except Exception as e:
+                    log.debug(f"net_prem_ticks {sym}: {e}")
+            if not flow_set:
+                try:
+                    f["flow_bullishness"] = UW.flow_bullishness(uw_provider.flow_alerts(sym))
+                except Exception as e:
+                    log.debug(f"flow_alerts {sym}: {e}")
+
+            # Real call-OI growth from per-contract data (fixes screener -> 0).
+            oi_fn = getattr(uw_provider, "option_contracts", None)
+            if callable(oi_fn):
+                try:
+                    real_oi = UW.oi_accumulation_from_contracts(oi_fn(sym))
+                    if real_oi is not None:
+                        f["oi_accum"] = real_oi
+                except Exception as e:
+                    log.debug(f"option_contracts {sym}: {e}")
+
+            # Graded GEX + overhead gamma wall (per-strike if available).
+            strike_fn = getattr(uw_provider, "greek_exposure_by_strike", None)
+            gex_done = False
+            if callable(strike_fn):
+                try:
+                    prof = UW.gex_profile(strike_fn(sym), price)
+                    if prof.get("regime") is not None:
+                        f["gex_score"] = prof["score"]
+                        f["gex_regime"] = prof["regime"]
+                        f["gamma_wall"] = prof["gamma_wall"]
+                        f["gamma_wall_pressure"] = prof["wall_pressure"]
+                        f["wall_distance"] = prof["wall_distance"]
+                        gex_done = True
+                except Exception as e:
+                    log.debug(f"greek_exposure_by_strike {sym}: {e}")
+            if not gex_done:
+                try:
+                    g = UW.gex_regime(uw_provider.greek_exposure(sym), price)
+                    f["gex_score"] = g["score"]
+                    f["gex_regime"] = g["regime"]
+                except Exception as e:
+                    log.debug(f"greek_exposure {sym}: {e}")
+
+            # Max pain (context).
+            mp_fn = getattr(uw_provider, "max_pain", None)
+            if callable(mp_fn):
+                try:
+                    mp = UW.max_pain_context(mp_fn(sym), price)
+                    f["max_pain"] = mp["max_pain"]
+                except Exception as e:
+                    log.debug(f"max_pain {sym}: {e}")
+
             try:
-                alerts = uw_provider.flow_alerts(sym)
-                f["flow_bullishness"] = UW.flow_bullishness(alerts)
-            except Exception as e:
-                log.debug(f"flow_alerts {sym}: {e}")
-            try:
-                greek = uw_provider.greek_exposure(sym)
-                g = UW.gex_regime(greek, f.get("current_price"))
-                f["gex_score"] = g["score"]
-                f["gex_regime"] = g["regime"]
-            except Exception as e:
-                log.debug(f"greek_exposure {sym}: {e}")
-            try:
-                dp = UW.darkpool_accumulation(uw_provider.darkpool(sym), f.get("current_price"))
+                dp = UW.darkpool_accumulation(uw_provider.darkpool(sym), price)
                 f["darkpool_premium"] = dp["premium"]
                 f["darkpool_accum"] = dp["accum"]
             except Exception as e:
@@ -207,11 +291,37 @@ def run_scan(
             except Exception as e:
                 log.debug(f"seasonality {sym}: {e}")
 
-    # --- Stage 3: composite cross-sectional score ---
-    score_candidates(features, weights=config.normalized_weights())
-    features.sort(key=lambda f: f.get("score", 0.0), reverse=True)
+    # --- Market context / regime (gates scores so we don't fight the tape) ---
+    above50 = [1.0 for f in features if f.get("above_sma50")]
+    breadth_pct = (len(above50) / len(features)) if features else None
+    try:
+        ctx = compute_market_context(
+            price_provider,
+            uw_provider=uw_provider if uw_active else None,
+            index_provider=index_provider,
+            spy_closes=spy_closes,
+            breadth_pct=breadth_pct,
+            history_days=config.history_days,
+            logger=log,
+        )
+        result.market_context = ctx.to_dict()
+        regime_scale = ctx.regime_scale
+        if ctx.notes:
+            result.warnings.extend(ctx.notes)
+    except Exception as e:
+        log.warning(f"Market context failed: {e}")
+        regime_scale = 1.0
 
-    top = features[: config.top_n]
+    # --- Stage 3: composite cross-sectional score ---
+    # When UW is active, only deep-dived names (which have full smart-money data)
+    # are eligible for ranking, so a structurally-zeroed name can't outrank a
+    # name with real flow/GEX/dark-pool. Percentile ranks are computed within
+    # this consistent set.
+    scored = deep if (uw_active and deep) else features
+    score_candidates(scored, weights=config.normalized_weights(), regime_scale=regime_scale)
+    scored.sort(key=lambda f: f.get("score", 0.0), reverse=True)
+
+    top = scored[: config.top_n]
     candidates: List[ScanCandidate] = []
     for rank, f in enumerate(top, start=1):
         candidates.append(
@@ -222,11 +332,17 @@ def run_scan(
                 setup_type=f.get("setup_type", "none"),
                 pivot_price=_round(f.get("pivot_price")),
                 current_price=_round(f.get("current_price")),
+                breakout_trigger=bool(f.get("breakout_trigger")),
+                volume_expansion=_round(f.get("vol_ratio"), 2),
+                pct_from_52wk_high=_round(f.get("pct_from_52wk_high"), 1),
                 iv_rank=_round(f.get("iv_rank"), 1),
                 implied_move=_round(f.get("implied_move"), 2),
+                iv_vs_realized=_round(f.get("iv_vs_realized"), 2),
                 net_call_premium=_round(f.get("net_call_premium")),
                 bullish_flow_score=_round(f.get("flow_bullishness")),
                 gex_regime=f.get("gex_regime"),
+                gamma_wall=_round(f.get("gamma_wall"), 2),
+                max_pain=_round(f.get("max_pain"), 2),
                 dark_pool_accum=bool(f.get("darkpool_accum")),
                 smart_money=bool(f.get("smart_money_flag")),
                 next_earnings_date=f.get("next_earnings_date"),

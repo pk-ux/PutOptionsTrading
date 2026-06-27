@@ -175,6 +175,39 @@ class UnusualWhalesProvider:
         rows = self._data(payload)
         return rows[-1] if rows else {}
 
+    def greek_exposure_by_strike(self, ticker: str) -> List[Dict[str, Any]]:
+        """Per-strike dealer gamma exposure (for graded GEX + gamma walls)."""
+        payload = self._get(f"/api/stock/{ticker}/greek-exposure/strike")
+        return self._data(payload)
+
+    def max_pain(self, ticker: str) -> Any:
+        """Max-pain price per expiry for the ticker."""
+        return self._get(f"/api/stock/{ticker}/max-pain")
+
+    def net_prem_ticks(self, ticker: str) -> List[Dict[str, Any]]:
+        """Intraday cumulative net call/put premium ticks for the latest day."""
+        payload = self._get(f"/api/stock/{ticker}/net-prem-ticks")
+        return self._data(payload)
+
+    def option_contracts(self, ticker: str) -> List[Dict[str, Any]]:
+        """Per-contract list (used for real call open-interest growth)."""
+        payload = self._get(f"/api/stock/{ticker}/option-contracts", {"limit": 500})
+        return self._data(payload)
+
+    def market_tide(self) -> List[Dict[str, Any]]:
+        """Market-wide net options premium (a fear/greed tape proxy)."""
+        payload = self._get("/api/market/market-tide")
+        return self._data(payload)
+
+    def spike(self) -> Any:
+        """Unusual Whales SPIKE intraday volatility index (best-effort)."""
+        return self._get("/api/market/spike")
+
+    def economic_calendar(self) -> List[Dict[str, Any]]:
+        """Upcoming macro events (used as light market context)."""
+        payload = self._get("/api/market/economic-calendar")
+        return self._data(payload)
+
     def darkpool(self, ticker: str) -> List[Dict[str, Any]]:
         payload = self._get(f"/api/darkpool/{ticker}", {"limit": 200})
         return self._data(payload)

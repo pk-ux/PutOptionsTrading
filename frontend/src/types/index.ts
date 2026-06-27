@@ -434,8 +434,23 @@ export interface BreakoutScannerSettings {
   last_run_at: string | null;
   last_run_status: string;
   last_run_message: string | null;
+  market_context: BreakoutMarketContext | null;
   updated_at: string | null;
   unusual_whales_configured: boolean;
+}
+
+export interface BreakoutMarketContext {
+  regime?: string;
+  fear_greed?: number;
+  regime_scale?: number;
+  spy_trend?: number | null;
+  qqq_trend?: number | null;
+  breadth?: number | null;
+  vix?: number | null;
+  vix_change_5d?: number | null;
+  market_tide?: number | null;
+  spike?: number | null;
+  notes?: string[];
 }
 
 export interface BreakoutScannerSettingsUpdate {
@@ -459,11 +474,17 @@ export interface BreakoutScanResultItem {
   setup_type: string | null;
   pivot_price: number | null;
   current_price: number | null;
+  breakout_trigger: boolean;
+  volume_expansion: number | null;
+  pct_from_52wk_high: number | null;
   iv_rank: number | null;
   implied_move: number | null;
+  iv_vs_realized: number | null;
   net_call_premium: number | null;
   bullish_flow_score: number | null;
   gex_regime: string | null;
+  gamma_wall: number | null;
+  max_pain: number | null;
   dark_pool_accum: boolean;
   smart_money: boolean;
   next_earnings_date: string | null;

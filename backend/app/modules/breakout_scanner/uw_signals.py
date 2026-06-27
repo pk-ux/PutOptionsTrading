@@ -10,6 +10,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 
+def _clip01(x: float) -> float:
+    if x != x:  # NaN
+        return 0.0
+    return float(max(0.0, min(1.0, x)))
+
+
 def _f(val: Any) -> Optional[float]:
     """Parse a UW value (often a string) into a float, or None."""
     if val is None:
@@ -96,6 +102,39 @@ def oi_accumulation(metrics: Dict[str, Any]) -> float:
     return float(val) if val is not None else 0.0
 
 
+def oi_accumulation_from_contracts(contracts: List[Dict[str, Any]]) -> Optional[float]:
+    """Real call open-interest growth aggregated across a ticker's contracts.
+
+    Replaces the screener-row fallback (which often degrades to 0). Sums prior
+    and current call open interest across contracts and returns the net percent
+    change. Returns ``None`` if the data is unusable (caller keeps the fallback).
+    """
+    if not contracts:
+        return None
+    prev_total = 0.0
+    curr_total = 0.0
+    for c in contracts:
+        otype = (_get_any(c, "option_type", "type") or "").lower()
+        if otype and otype != "call":
+            continue
+        curr = _f(_get_any(c, "open_interest", "oi"))
+        prev = _f(_get_any(c, "prev_oi", "previous_oi", "open_interest_change"))
+        if curr is None:
+            continue
+        # If only a change field is present, treat it as the delta directly.
+        if prev is None:
+            chg = _f(_get_any(c, "oi_change", "open_interest_change"))
+            if chg is not None:
+                prev = curr - chg
+            else:
+                continue
+        curr_total += curr
+        prev_total += prev
+    if prev_total <= 0:
+        return None
+    return float((curr_total - prev_total) / prev_total * 100.0)
+
+
 def gex_regime(greek: Optional[Dict[str, Any]], current_price: Optional[float]) -> Dict[str, Any]:
     """Dealer gamma regime. Negative net dealer gamma => 'short_gamma' (dealers
     must buy into strength), which fuels breakout acceleration => higher score.
@@ -119,6 +158,118 @@ def gex_regime(greek: Optional[Dict[str, Any]], current_price: Optional[float]) 
     if net < 0:
         return {"regime": "short_gamma", "score": 1.0}
     return {"regime": "long_gamma", "score": 0.2}
+
+
+def gex_profile(strike_rows: List[Dict[str, Any]], current_price: Optional[float]) -> Dict[str, Any]:
+    """Graded dealer-gamma regime + overhead gamma-wall detection.
+
+    Uses per-strike greek exposure (``/greek-exposure/strike``). Net dealer gamma
+    per strike is ``call_gex + put_gex`` (put gamma is reported negative). A net
+    short-gamma book fuels breakout acceleration (dealers chase price), so it
+    scores high - but graded by magnitude rather than the old 0/0.2/1.0 step.
+    Also locates the nearest large *overhead* gamma wall, which acts as
+    resistance just above price.
+    """
+    out: Dict[str, Any] = {
+        "score": 0.0,
+        "regime": None,
+        "gamma_wall": None,
+        "wall_distance": None,
+        "wall_pressure": 0.0,
+    }
+    if not strike_rows:
+        return out
+
+    net_total = 0.0
+    abs_total = 0.0
+    overhead: List[tuple] = []  # (strike, net_gex_at_strike)
+    for row in strike_rows:
+        strike = _f(_get_any(row, "strike"))
+        call_gex = _f(_get_any(row, "call_gex", "call_gamma", "gamma_call")) or 0.0
+        put_gex = _f(_get_any(row, "put_gex", "put_gamma", "gamma_put")) or 0.0
+        net = call_gex + put_gex  # put_gex already negative
+        net_total += net
+        abs_total += abs(call_gex) + abs(put_gex)
+        if strike is not None and current_price and strike > current_price:
+            overhead.append((strike, net))
+
+    if abs_total <= 0:
+        return out
+
+    ratio = net_total / abs_total  # [-1, 1]; <0 == net short gamma
+    out["regime"] = "short_gamma" if net_total < 0 else "long_gamma"
+    out["score"] = _clip01(0.5 - 0.5 * ratio)  # short gamma -> higher
+
+    # Nearest sizable overhead positive-gamma wall (resistance).
+    if overhead and current_price:
+        walls = [(s, g) for (s, g) in overhead if g > 0]
+        if walls:
+            wall_strike, _g = max(walls, key=lambda t: t[1])
+            dist = (wall_strike - current_price) / current_price
+            out["gamma_wall"] = float(wall_strike)
+            out["wall_distance"] = float(dist * 100.0)
+            # Pressure peaks when a big wall sits 0-5% overhead.
+            if 0 < dist <= 0.05:
+                out["wall_pressure"] = float(round(1.0 - dist / 0.05, 3))
+    return out
+
+
+def max_pain_context(payload: Any, current_price: Optional[float]) -> Dict[str, Any]:
+    """Max-pain price vs spot. Price below max pain implies an upward 'pull'."""
+    out: Dict[str, Any] = {"max_pain": None, "distance": None, "pull": 0.5}
+    rows: List[Dict[str, Any]] = []
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, list):
+            rows = data
+        elif isinstance(data, dict):
+            rows = [data]
+        else:
+            rows = [payload]
+    if not rows or not current_price:
+        return out
+    mp = None
+    for row in rows:
+        if isinstance(row, dict):
+            mp = _f(_get_any(row, "max_pain", "max_pain_price", "price", "value"))
+        else:
+            mp = _f(row)
+        if mp is not None:
+            break
+    if mp is None or mp <= 0:
+        return out
+    dist = (mp - current_price) / current_price
+    out["max_pain"] = float(mp)
+    out["distance"] = float(dist * 100.0)
+    # Bounded bullish pull when price sits below max pain.
+    out["pull"] = float(round(_clip01(0.5 + dist * 4.0), 3))
+    return out
+
+
+def flow_from_ticks(ticks: List[Dict[str, Any]]) -> Optional[float]:
+    """Net bullish premium from intraday net-prem ticks (cumulative for the day).
+
+    More robust than a single ``flow-alerts`` snapshot. Uses the last cumulative
+    tick: net call premium (call buying, bullish) minus net put premium (negative
+    when puts are sold, also bullish). Raw value, percentile-ranked in scoring.
+    """
+    if not ticks:
+        return None
+    last = ticks[-1]
+    ncp = _f(_get_any(last, "net_call_premium"))
+    npp = _f(_get_any(last, "net_put_premium"))
+    if ncp is None and npp is None:
+        return None
+    return float((ncp or 0.0) - (npp or 0.0))
+
+
+def iv_vs_realized(implied_move: Optional[float], realized_vol: Optional[float]) -> Optional[float]:
+    """Ratio of implied to realized vol. >1 == options rich, <1 == options cheap."""
+    if implied_move is None or realized_vol is None or realized_vol <= 0:
+        return None
+    return float(implied_move / realized_vol)
 
 
 def darkpool_accumulation(trades: List[Dict[str, Any]], current_price: Optional[float]) -> Dict[str, Any]:

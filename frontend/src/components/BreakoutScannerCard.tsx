@@ -16,6 +16,8 @@ import {
   Zap,
   Eye,
   Users,
+  Flame,
+  Gauge,
 } from 'lucide-react';
 import apiClient from '@/api/client';
 import type {
@@ -30,6 +32,7 @@ interface BreakoutScannerCardProps {
 }
 
 const SETUP_LABELS: Record<string, string> = {
+  confirmed_breakout: 'Confirmed Breakout',
   squeeze_breakout_setup: 'Squeeze + Pivot',
   volatility_squeeze: 'Volatility Squeeze',
   vcp_base: 'VCP Base',
@@ -37,6 +40,20 @@ const SETUP_LABELS: Record<string, string> = {
   ascending_base: 'Ascending Base',
   consolidation: 'Consolidation',
 };
+
+const REGIME_STYLES: Record<string, { label: string; cls: string }> = {
+  risk_on: { label: 'Risk On', cls: 'bg-green-500/15 text-green-300 border-green-500/30' },
+  neutral: { label: 'Neutral', cls: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' },
+  risk_off: { label: 'Risk Off', cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
+};
+
+function fearGreedLabel(score: number): string {
+  if (score >= 75) return 'Extreme Greed';
+  if (score >= 60) return 'Greed';
+  if (score >= 40) return 'Neutral';
+  if (score >= 25) return 'Fear';
+  return 'Extreme Fear';
+}
 
 function parseUniverse(text: string): string[] {
   return Array.from(
@@ -46,6 +63,116 @@ function parseUniverse(text: string): string[] {
         .map((s) => s.trim().toUpperCase())
         .filter(Boolean)
     )
+  );
+}
+
+function scoreColorClass(score: number): string {
+  if (score >= 70) return 'text-green-400';
+  if (score >= 50) return 'text-yellow-400';
+  return 'text-gray-400';
+}
+
+function BreakoutResultSignals({ result }: { result: BreakoutScanResultItem }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {result.breakout_trigger && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-orange-300">
+          <Flame size={12} className="text-orange-400 shrink-0" aria-hidden />
+          Breakout
+        </span>
+      )}
+      {(result.bullish_flow_score ?? 0) > 0 && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-yellow-300">
+          <Zap size={12} className="text-yellow-400 shrink-0" aria-hidden />
+          Flow
+        </span>
+      )}
+      {result.gex_regime === 'short_gamma' && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-green-300">
+          <TrendingUp size={12} className="text-green-400 shrink-0" aria-hidden />
+          Short gamma
+        </span>
+      )}
+      {result.dark_pool_accum && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-blue-300">
+          <Eye size={12} className="text-blue-400 shrink-0" aria-hidden />
+          Dark pool
+        </span>
+      )}
+      {result.smart_money && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-purple-300">
+          <Users size={12} className="text-purple-400 shrink-0" aria-hidden />
+          Smart money
+        </span>
+      )}
+      {result.earnings_flag && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-red-300">
+          <AlertTriangle size={12} className="text-red-400 shrink-0" aria-hidden />
+          Earnings
+        </span>
+      )}
+    </div>
+  );
+}
+
+function BreakoutResultSignalsCompact({ result }: { result: BreakoutScanResultItem }) {
+  return (
+    <div className="flex items-center justify-center gap-1.5">
+      {result.breakout_trigger && <Flame size={12} className="text-orange-400" aria-label="Confirmed breakout" />}
+      {(result.bullish_flow_score ?? 0) > 0 && <Zap size={12} className="text-yellow-400" aria-label="Bullish flow" />}
+      {result.gex_regime === 'short_gamma' && <TrendingUp size={12} className="text-green-400" aria-label="Short gamma" />}
+      {result.dark_pool_accum && <Eye size={12} className="text-blue-400" aria-label="Dark pool accumulation" />}
+      {result.smart_money && <Users size={12} className="text-purple-400" aria-label="Smart money" />}
+      {result.earnings_flag && <AlertTriangle size={12} className="text-red-400" aria-label="Earnings within CSP window" />}
+    </div>
+  );
+}
+
+function BreakoutResultCard({ result }: { result: BreakoutScanResultItem }) {
+  const setupLabel = SETUP_LABELS[result.setup_type || ''] || result.setup_type || '—';
+
+  return (
+    <div className="bg-dark-800/50 rounded-xl border border-white/10 p-3 sm:p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">#{result.rank}</span>
+            <span className="text-lg font-bold text-white">{result.symbol}</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5 truncate" title={setupLabel}>
+            {setupLabel}
+          </p>
+        </div>
+        <span className={`shrink-0 px-2.5 py-1 rounded-full text-sm font-semibold bg-dark-700 border border-white/10 ${scoreColorClass(result.score)}`}>
+          {result.score.toFixed(0)}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="flex justify-between gap-2">
+          <span className="text-gray-500">Price</span>
+          <span className="text-white font-medium">
+            {result.current_price != null ? `$${result.current_price.toFixed(2)}` : '—'}
+          </span>
+        </div>
+        <div className="flex justify-between gap-2">
+          <span className="text-gray-500">IVR</span>
+          <span className="text-white font-medium">
+            {result.iv_rank != null ? result.iv_rank.toFixed(0) : '—'}
+          </span>
+        </div>
+        <div className="col-span-2 flex justify-between gap-2 border-t border-white/5 pt-2">
+          <span className="text-gray-500">CSP Strike</span>
+          <span className="text-primary-300 font-medium">
+            {result.suggested_put_strike != null ? `$${result.suggested_put_strike}` : '—'}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-white/5">
+        <BreakoutResultSignals result={result} />
+      </div>
+    </div>
   );
 }
 
@@ -223,21 +350,21 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
   }
 
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Rocket size={20} className="text-primary-400" />
+    <div className="card min-w-0 overflow-hidden">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <Rocket size={20} className="text-primary-400 shrink-0" />
           <h2 className="text-xl font-semibold">Breakout Scanner</h2>
           <span className="text-xs px-1.5 py-0.5 rounded bg-primary-500/20 text-primary-300">
             Momentum Stocks
           </span>
         </div>
         {settings?.unusual_whales_configured ? (
-          <span className="flex items-center gap-1 text-xs text-green-400">
+          <span className="flex items-center gap-1 text-xs text-green-400 shrink-0">
             <CheckCircle size={12} /> Unusual Whales
           </span>
         ) : (
-          <span className="flex items-center gap-1 text-xs text-yellow-400">
+          <span className="flex items-center gap-1 text-xs text-yellow-400 shrink-0">
             <AlertTriangle size={12} /> No UW key
           </span>
         )}
@@ -280,7 +407,7 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
         </div>
 
         {/* Numeric config grid */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-300 mb-1">Top N picks</label>
             <input
@@ -313,7 +440,7 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
               className="w-full bg-dark-700 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500"
             />
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-gray-300 mb-1">Min avg volume</label>
             <input
               type="number" min={0} step={50000} value={minVolume}
@@ -324,34 +451,34 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
         </div>
 
         {/* Toggles */}
-        <div className="p-3 bg-dark-800 rounded-lg flex items-center justify-between">
-          <div>
+        <div className="p-3 bg-dark-800 rounded-lg flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <label className="font-medium text-white text-sm">Use Unusual Whales</label>
             <p className="text-xs text-gray-500 mt-0.5">Flow, OI, GEX, dark pool & smart money</p>
           </div>
           <button
             onClick={() => setUseUw(!useUw)}
-            className={`relative w-12 h-6 rounded-full transition-colors ${useUw ? 'bg-primary-500' : 'bg-gray-600'}`}
+            className={`relative shrink-0 w-12 h-6 rounded-full transition-colors ${useUw ? 'bg-primary-500' : 'bg-gray-600'}`}
           >
             <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${useUw ? 'left-7' : 'left-1'}`} />
           </button>
         </div>
 
-        <div className="p-3 bg-dark-800 rounded-lg flex items-center justify-between">
-          <div>
+        <div className="p-3 bg-dark-800 rounded-lg flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <label className="font-medium text-white text-sm">Require above 200-day avg</label>
             <p className="text-xs text-gray-500 mt-0.5">Optional uptrend gate (off by default)</p>
           </div>
           <button
             onClick={() => setRequireSma200(!requireSma200)}
-            className={`relative w-12 h-6 rounded-full transition-colors ${requireSma200 ? 'bg-primary-500' : 'bg-gray-600'}`}
+            className={`relative shrink-0 w-12 h-6 rounded-full transition-colors ${requireSma200 ? 'bg-primary-500' : 'bg-gray-600'}`}
           >
             <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${requireSma200 ? 'left-7' : 'left-1'}`} />
           </button>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleSave}
             disabled={saving}
@@ -395,53 +522,89 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
         )}
       </div>
 
-      {/* Results table */}
+      {/* Market context / regime banner */}
+      {settings?.market_context && settings.market_context.regime && (
+        (() => {
+          const mc = settings.market_context!;
+          const regime = REGIME_STYLES[mc.regime || 'neutral'] || REGIME_STYLES.neutral;
+          const fg = Math.round(mc.fear_greed ?? 50);
+          return (
+            <div className={`mt-6 p-3 rounded-lg border ${regime.cls}`}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Gauge size={16} className="shrink-0" />
+                  <span className="text-sm font-semibold">Market Regime: {regime.label}</span>
+                </div>
+                <span className="text-xs flex flex-wrap items-center gap-1">
+                  <Flame size={12} className="shrink-0" /> Fear/Greed: <span className="font-semibold">{fg}</span>
+                  <span className="opacity-70">({fearGreedLabel(fg)})</span>
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] opacity-80">
+                {mc.regime_scale != null && <span>Score x{mc.regime_scale.toFixed(2)}</span>}
+                {mc.spy_trend != null && <span>SPY trend {(mc.spy_trend * 100).toFixed(0)}</span>}
+                {mc.qqq_trend != null && <span>QQQ trend {(mc.qqq_trend * 100).toFixed(0)}</span>}
+                {mc.breadth != null && <span>Breadth {(mc.breadth * 100).toFixed(0)}%</span>}
+                {mc.vix != null && <span>VIX {mc.vix.toFixed(1)}</span>}
+                {mc.market_tide != null && <span>Tide {(mc.market_tide * 100).toFixed(0)}</span>}
+              </div>
+            </div>
+          );
+        })()
+      )}
+
+      {/* Results */}
       {results.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 min-w-0">
           <h3 className="text-sm font-semibold text-white mb-2">Latest Results</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+
+          {/* Mobile: card layout */}
+          <div className="md:hidden space-y-3">
+            {results.map((r) => (
+              <BreakoutResultCard key={r.symbol} result={r} />
+            ))}
+          </div>
+
+          {/* Desktop: table layout */}
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-white/5">
+            <table className="w-full text-xs min-w-[640px]">
               <thead>
                 <tr className="text-gray-500 border-b border-white/10">
-                  <th className="text-left py-2 pr-2">#</th>
-                  <th className="text-left py-2 pr-2">Symbol</th>
-                  <th className="text-right py-2 pr-2">Score</th>
-                  <th className="text-left py-2 pr-2">Setup</th>
-                  <th className="text-right py-2 pr-2">Price</th>
-                  <th className="text-right py-2 pr-2">IVR</th>
-                  <th className="text-right py-2 pr-2">CSP Strike</th>
-                  <th className="text-center py-2 pr-2">Signals</th>
+                  <th className="text-left py-2 px-3">#</th>
+                  <th className="text-left py-2 px-3">Symbol</th>
+                  <th className="text-right py-2 px-3">Score</th>
+                  <th className="text-left py-2 px-3">Setup</th>
+                  <th className="text-right py-2 px-3">Price</th>
+                  <th className="text-right py-2 px-3">IVR</th>
+                  <th className="text-right py-2 px-3">CSP Strike</th>
+                  <th className="text-center py-2 px-3">Signals</th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((r) => (
                   <tr key={r.symbol} className="border-b border-white/5 hover:bg-white/5">
-                    <td className="py-2 pr-2 text-gray-500">{r.rank}</td>
-                    <td className="py-2 pr-2 font-semibold text-white">{r.symbol}</td>
-                    <td className="py-2 pr-2 text-right">
-                      <span className={`font-medium ${r.score >= 70 ? 'text-green-400' : r.score >= 50 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                    <td className="py-2 px-3 text-gray-500">{r.rank}</td>
+                    <td className="py-2 px-3 font-semibold text-white">{r.symbol}</td>
+                    <td className="py-2 px-3 text-right">
+                      <span className={`font-medium ${scoreColorClass(r.score)}`}>
                         {r.score.toFixed(0)}
                       </span>
                     </td>
-                    <td className="py-2 pr-2 text-gray-300">{SETUP_LABELS[r.setup_type || ''] || r.setup_type}</td>
-                    <td className="py-2 pr-2 text-right text-gray-300">{r.current_price != null ? `$${r.current_price.toFixed(2)}` : '—'}</td>
-                    <td className="py-2 pr-2 text-right text-gray-300">{r.iv_rank != null ? r.iv_rank.toFixed(0) : '—'}</td>
-                    <td className="py-2 pr-2 text-right text-primary-300">{r.suggested_put_strike != null ? `$${r.suggested_put_strike}` : '—'}</td>
-                    <td className="py-2 pr-2">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {(r.bullish_flow_score ?? 0) > 0 && <Zap size={12} className="text-yellow-400" aria-label="Bullish flow" />}
-                        {r.gex_regime === 'short_gamma' && <TrendingUp size={12} className="text-green-400" aria-label="Short gamma" />}
-                        {r.dark_pool_accum && <Eye size={12} className="text-blue-400" aria-label="Dark pool accumulation" />}
-                        {r.smart_money && <Users size={12} className="text-purple-400" aria-label="Smart money" />}
-                        {r.earnings_flag && <AlertTriangle size={12} className="text-red-400" aria-label="Earnings within CSP window" />}
-                      </div>
+                    <td className="py-2 px-3 text-gray-300">{SETUP_LABELS[r.setup_type || ''] || r.setup_type}</td>
+                    <td className="py-2 px-3 text-right text-gray-300">{r.current_price != null ? `$${r.current_price.toFixed(2)}` : '—'}</td>
+                    <td className="py-2 px-3 text-right text-gray-300">{r.iv_rank != null ? r.iv_rank.toFixed(0) : '—'}</td>
+                    <td className="py-2 px-3 text-right text-primary-300">{r.suggested_put_strike != null ? `$${r.suggested_put_strike}` : '—'}</td>
+                    <td className="py-2 px-3">
+                      <BreakoutResultSignalsCompact result={r} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-gray-500">
+
+          <div className="hidden md:flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1"><Flame size={10} className="text-orange-400" /> Confirmed breakout</span>
             <span className="flex items-center gap-1"><Zap size={10} className="text-yellow-400" /> Bullish flow</span>
             <span className="flex items-center gap-1"><TrendingUp size={10} className="text-green-400" /> Short gamma</span>
             <span className="flex items-center gap-1"><Eye size={10} className="text-blue-400" /> Dark pool</span>

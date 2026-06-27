@@ -17,6 +17,7 @@ from ...core.database import get_db
 from ...core.deps import get_current_admin
 from ...models import BreakoutScannerSettings, BreakoutScanResult, User
 from ...modules.breakout_scanner.integration import (
+    ensure_schema,
     get_or_create_settings,
     reset_if_stale,
     reset_status,
@@ -42,6 +43,7 @@ class BreakoutSettingsResponse(BaseModel):
     last_run_at: Optional[str] = None
     last_run_status: str
     last_run_message: Optional[str] = None
+    market_context: Dict[str, Any] = {}
     updated_at: Optional[str] = None
     unusual_whales_configured: bool
 
@@ -155,6 +157,7 @@ async def get_breakout_results(
     db: Session = Depends(get_db),
 ):
     """Get the latest ranked scan results (admin only)."""
+    ensure_schema()
     rows = (
         db.query(BreakoutScanResult)
         .order_by(BreakoutScanResult.run_at.desc(), BreakoutScanResult.rank.asc())
