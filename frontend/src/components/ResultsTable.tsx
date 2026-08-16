@@ -35,6 +35,21 @@ function getReturnBgClass(value: number): string {
   return 'bg-blue-500/20 border-blue-500/30';
 }
 
+function formatSma(value: number | null | undefined, price?: number): JSX.Element {
+  if (value === undefined || value === null) return <span className="text-gray-500">-</span>;
+  const above = price !== undefined && price !== null && price >= value;
+  const below = price !== undefined && price !== null && price < value;
+  const tone = above ? 'text-green-400' : below ? 'text-red-400' : 'text-gray-200';
+  return <span className={tone}>{formatCurrency(value)}</span>;
+}
+
+function formatRsi(value: number | null | undefined): JSX.Element {
+  if (value === undefined || value === null) return <span className="text-gray-500">-</span>;
+  const tone =
+    value >= 70 ? 'text-red-400' : value <= 30 ? 'text-cyan-400' : 'text-gray-200';
+  return <span className={tone}>{value.toFixed(1)}</span>;
+}
+
 function formatPriceWithChange(price: number | undefined, changePercent?: number): JSX.Element {
   if (price === undefined || price === null) return <span>-</span>;
   
@@ -184,6 +199,22 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
             <span className="text-gray-500">IV:</span>
             <span className="text-white">{formatPercent(iv)}</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">SMA 20:</span>
+            {formatSma(row.sma_20, row.current_price)}
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">SMA 50:</span>
+            {formatSma(row.sma_50, row.current_price)}
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">SMA 200:</span>
+            {formatSma(row.sma_200, row.current_price)}
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">RSI:</span>
+            {formatRsi(row.rsi_14)}
+          </div>
         </div>
       )}
     </div>
@@ -209,6 +240,10 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             <th>Vol</th>
             <th>OI</th>
             <th>IV</th>
+            <th title="20-day simple moving average">SMA 20</th>
+            <th title="50-day simple moving average">SMA 50</th>
+            <th title="200-day simple moving average">SMA 200</th>
+            <th title="14-day relative strength index">RSI</th>
           </tr>
         </thead>
         <tbody>
@@ -255,6 +290,10 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
                 <td>{row.volume}</td>
                 <td>{oi}</td>
                 <td>{formatPercent(iv)}</td>
+                <td>{formatSma(row.sma_20, row.current_price)}</td>
+                <td>{formatSma(row.sma_50, row.current_price)}</td>
+                <td>{formatSma(row.sma_200, row.current_price)}</td>
+                <td>{formatRsi(row.rsi_14)}</td>
               </tr>
             );
           })}

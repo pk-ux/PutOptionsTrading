@@ -465,6 +465,36 @@ class AlpacaAPIClient:
                 return {'price': price, 'previous_close': None, 'change_percent': None}
             return None
     
+    def get_daily_closes(self, symbol: str, days: int = 365) -> List[float]:
+        """Adjusted daily closes (oldest-first) for SMA/RSI. Closes only — no OHLCV payload."""
+        if not getattr(self, "stock_client", None):
+            return []
+        try:
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+            from alpaca.data.enums import Adjustment
+
+            start = datetime.now(timezone.utc) - timedelta(days=int(days * 1.6) + 5)
+            req = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=TimeFrame.Day,
+                start=start,
+                adjustment=Adjustment.ALL,
+            )
+            barset = self.stock_client.get_stock_bars(req)
+            bars = barset.data.get(symbol) if hasattr(barset, "data") else None
+            if not bars:
+                return []
+            pairs = []
+            for b in bars:
+                ts = getattr(b, "timestamp", None)
+                pairs.append((ts.isoformat() if ts is not None else "", float(b.close)))
+            pairs.sort(key=lambda p: p[0])
+            return [close for _, close in pairs]
+        except Exception as e:
+            print(f"Error fetching Alpaca daily closes for {symbol}: {e}")
+            return []
+
     def get_options_chain(self, symbol: str, config: Dict[str, Any]) -> pd.DataFrame:
         """
         Get options chain with prices and Greeks from Alpaca API.

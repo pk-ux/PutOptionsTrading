@@ -65,6 +65,56 @@ def test_screen_options_still_filters_assignment_probability():
     assert result.iloc[0]["annualized_return"] == 25.0
 
 
+def test_compute_sma_rsi_from_closes():
+    from app.services.data_fetcher import compute_sma_rsi
+
+    history = list(range(1, 201))
+    result = compute_sma_rsi(history)
+    assert result["sma_20"] == round(sum(range(181, 201)) / 20, 2)
+    assert result["sma_50"] == round(sum(range(151, 201)) / 50, 2)
+    assert result["sma_200"] == round(sum(range(1, 201)) / 200, 2)
+    assert result["rsi_14"] is not None
+    assert 50 < result["rsi_14"] <= 100
+
+
+def test_compute_sma_rsi_handles_short_history():
+    from app.services.data_fetcher import compute_sma_rsi
+
+    result = compute_sma_rsi([10.0] * 10)
+    assert result["sma_20"] is None
+    assert result["sma_50"] is None
+    assert result["sma_200"] is None
+    assert result["rsi_14"] is None
+
+
+def test_get_sma_rsi_indicators_fetches_once_per_session(monkeypatch):
+    from app.core import cache as cache_mod
+    from app.core.cache import InMemoryCache
+    from app.services import data_fetcher
+
+    cache_mod._cache_instance = InMemoryCache()
+    cache_mod._cache_settings = {**cache_mod.DEFAULT_CACHE_SETTINGS, "cache_enabled": True}
+    calls = {"n": 0}
+
+    def fake_fetch(symbol):
+        calls["n"] += 1
+        return [float(i) for i in range(1, 201)]
+
+    monkeypatch.setattr(data_fetcher, "_fetch_daily_closes", fake_fetch)
+    monkeypatch.setattr(
+        data_fetcher,
+        "market_today",
+        lambda: __import__("datetime").date(2026, 8, 15),
+    )
+
+    first = data_fetcher.get_sma_rsi_indicators("AAPL")
+    second = data_fetcher.get_sma_rsi_indicators("AAPL")
+    assert first == second
+    assert first["sma_200"] is not None
+    assert calls["n"] == 1
+    cache_mod._cache_instance = None
+
+
 def test_filter_auto_name_omits_return():
     name = Filter.generate_name(15, 45, 10, 10, 20)
     assert name == "DTE_15-45_VOL_10_OI_10_PROB_20"

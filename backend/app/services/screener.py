@@ -32,6 +32,7 @@ from .options_screener import (
     format_output,
     get_earnings_dividend_dates,
 )
+from .data_fetcher import get_sma_rsi_indicators
 from .massive_api_client import get_massive_client
 from .alpaca_api_client import get_alpaca_client
 from ..core.cache import (
@@ -277,8 +278,17 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     
     # Convert DataFrame to list of dicts and add price_change_percent to each row
     results = formatted.to_dict(orient='records')
+    try:
+        indicators = get_sma_rsi_indicators(symbol)
+    except Exception as e:
+        print(f"Error fetching SMA/RSI for {symbol}: {e}")
+        indicators = {}
     for row in results:
         row['price_change_percent'] = price_change_percent
+        row['sma_20'] = indicators.get('sma_20')
+        row['sma_50'] = indicators.get('sma_50')
+        row['sma_200'] = indicators.get('sma_200')
+        row['rsi_14'] = indicators.get('rsi_14')
     
     return results, used_yahoo
 

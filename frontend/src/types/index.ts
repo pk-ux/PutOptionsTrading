@@ -115,6 +115,10 @@ export interface OptionResult {
   has_earnings_before_expiry?: boolean;  // Earnings call before expiry
   has_dividend_before_expiry?: boolean;  // Ex-dividend date before expiry
   meets_criteria?: boolean;  // Unused; kept for older API responses
+  sma_20?: number | null;
+  sma_50?: number | null;
+  sma_200?: number | null;
+  rsi_14?: number | null;
 }
 
 // Screen request

@@ -136,6 +136,88 @@ def fetch_price_history(symbol: str, days: int = 365) -> List[Dict[str, Any]]:
         return []
 
 
+def compute_sma_rsi(closes) -> Dict[str, Optional[float]]:
+    """Compute daily SMA(20/50/200) and RSI(14) from a 1-d close series."""
+    empty: Dict[str, Optional[float]] = {
+        "sma_20": None, "sma_50": None, "sma_200": None, "rsi_14": None,
+    }
+    arr = np.asarray(closes, dtype=float).ravel()
+    if arr.size == 0:
+        return empty
+
+    result: Dict[str, Optional[float]] = dict(empty)
+    for period, key in [(20, "sma_20"), (50, "sma_50"), (200, "sma_200")]:
+        if arr.size >= period:
+            result[key] = round(float(np.mean(arr[-period:])), 2)
+
+    try:
+        rsi = calculate_rsi(arr, 14)
+        if rsi is not None:
+            result["rsi_14"] = round(float(rsi), 1)
+    except Exception:
+        pass
+
+    return result
+
+
+def _fetch_daily_closes_yahoo(symbol: str) -> np.ndarray:
+    """Close prices only — skip building a full OHLCV history."""
+    try:
+        hist = yf.Ticker(symbol).history(period="1y", interval="1d", auto_adjust=True, timeout=20)
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            return np.array([], dtype=float)
+        return hist["Close"].to_numpy(dtype=float)
+    except Exception as e:
+        logger.error(f"Error fetching daily closes for {symbol}: {e}")
+        return np.array([], dtype=float)
+
+
+def _fetch_daily_closes(symbol: str) -> np.ndarray:
+    """Alpaca daily bars when that provider is active, otherwise Yahoo.
+
+    If Alpaca returns fewer than 200 sessions (needed for SMA 200), fall back
+    to Yahoo rather than caching a truncated series for the rest of the day.
+    """
+    from ..core.api_provider import is_alpaca_active, get_use_midpoint_pricing
+
+    alpaca_closes = np.array([], dtype=float)
+    if is_alpaca_active():
+        try:
+            from .alpaca_api_client import get_alpaca_client
+            client = get_alpaca_client(use_midpoint_pricing=get_use_midpoint_pricing())
+            if client:
+                closes = client.get_daily_closes(symbol)
+                if closes:
+                    alpaca_closes = np.asarray(closes, dtype=float)
+        except Exception as e:
+            logger.warning(f"Alpaca daily closes failed for {symbol}, using Yahoo: {e}")
+        if alpaca_closes.size >= 200:
+            return alpaca_closes
+
+    yahoo_closes = _fetch_daily_closes_yahoo(symbol)
+    if yahoo_closes.size > alpaca_closes.size:
+        return yahoo_closes
+    return alpaca_closes
+
+
+def get_sma_rsi_indicators(symbol: str) -> Dict[str, Optional[float]]:
+    """
+    Daily SMA 20/50/200 and RSI(14). Cached once per ticker per market session
+    so Screen All does not refetch a year of bars for every stock.
+    """
+    from ..core.cache import get_cached_indicators, set_cached_indicators
+
+    session = market_today().isoformat()
+    cached = get_cached_indicators(symbol, session)
+    if cached is not None:
+        return cached
+
+    indicators = compute_sma_rsi(_fetch_daily_closes(symbol))
+    if any(value is not None for value in indicators.values()):
+        set_cached_indicators(symbol, indicators, session)
+    return indicators
+
+
 def calculate_technicals(price_history: List[Dict[str, Any]], current_price: float = None, yahoo_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Calculate technical indicators from price history.

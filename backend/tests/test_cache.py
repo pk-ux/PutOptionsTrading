@@ -17,6 +17,8 @@ from app.core.cache import (
     set_cached_stock_price,
     get_cached_news,
     set_cached_news,
+    get_cached_indicators,
+    set_cached_indicators,
     clear_app_cache,
 )
 
@@ -83,6 +85,13 @@ def test_in_memory_cache_evicts_expired_on_set():
     mem.set("fresh", "new", ex=60)
     assert "stale" not in mem._cache
     assert mem.get("fresh") == "new"
+
+
+def test_indicators_are_keyed_by_market_session():
+    payload = {"sma_20": 1.0, "sma_50": 2.0, "sma_200": 3.0, "rsi_14": 40.0}
+    set_cached_indicators("aapl", payload, "2026-08-15")
+    assert get_cached_indicators("AAPL", "2026-08-15") == payload
+    assert get_cached_indicators("AAPL", "2026-08-16") is None
 
 
 def test_clear_app_cache_only_drops_app_prefixes():

@@ -309,12 +309,12 @@ def cache_set_json(key: str, value: Any, ttl: int = 300) -> None:
 
 def clear_app_cache() -> int:
     """
-    Drop this app's market-data keys only (price/options/news/events).
+    Drop this app's market-data keys only (price/options/news/events/indicators).
     Does not FLUSHALL, so a shared Redis is left intact.
     """
     cache = get_cache()
     deleted = 0
-    for prefix in ("price:", "options:", "news:", "events:"):
+    for prefix in ("price:", "options:", "news:", "events:", "indicators:"):
         deleted += cache.delete_by_prefix(prefix)
     return deleted
 
@@ -415,6 +415,24 @@ def set_cached_event_dates(symbol: str, data: Dict) -> None:
     """Cache event dates with configured TTL (default 1 week)"""
     key = make_cache_key("events", _normalize_symbol(symbol))
     cache_set_json(key, data, ttl=get_ttl_event_dates())
+
+
+def get_cached_indicators(symbol: str, session: Optional[str] = None) -> Optional[Dict]:
+    """Get cached daily SMA/RSI for this symbol and market session."""
+    if session is None:
+        from .market_clock import market_today
+        session = market_today().isoformat()
+    key = make_cache_key("indicators", _normalize_symbol(symbol), session)
+    return cache_get_json(key)
+
+
+def set_cached_indicators(symbol: str, data: Dict, session: Optional[str] = None) -> None:
+    """Cache daily SMA/RSI for the rest of the session (date is part of the key)."""
+    if session is None:
+        from .market_clock import market_today
+        session = market_today().isoformat()
+    key = make_cache_key("indicators", _normalize_symbol(symbol), session)
+    cache_set_json(key, data, ttl=12 * 3600)
 
 
 def get_config_hash(config: dict) -> str:
