@@ -202,18 +202,6 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
             <span className="text-white">{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(3)}` : '-'}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Volume:</span>
-            <span className="text-white">{row.volume}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Open Int:</span>
-            <span className="text-white">{oi}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">IV:</span>
-            <span className="text-white">{formatPercent(iv)}</span>
-          </div>
-          <div className="flex justify-between">
             <span className="text-gray-500">SMA 20:</span>
             {formatSma(row.sma_20, row.current_price)}
           </div>
@@ -228,6 +216,18 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
           <div className="flex justify-between">
             <span className="text-gray-500">RSI:</span>
             {formatRsi(row.rsi_14)}
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Volume:</span>
+            <span className="text-white">{row.volume}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Open Int:</span>
+            <span className="text-white">{oi}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">IV:</span>
+            <span className="text-white">{formatPercent(iv)}</span>
           </div>
         </div>
       )}
@@ -252,13 +252,13 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             <th>Daily Decay</th>
             <th>Assign Risk</th>
             <th>DTE</th>
-            <th>Vol</th>
-            <th>OI</th>
-            <th>IV</th>
             <th title="20-day simple moving average">SMA 20</th>
             <th title="50-day simple moving average">SMA 50</th>
             <th title="200-day simple moving average">SMA 200</th>
             <th title="14-day relative strength index">RSI</th>
+            <th>Vol</th>
+            <th>OI</th>
+            <th>IV</th>
           </tr>
         </thead>
         <tbody>
@@ -306,13 +306,13 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
                 <td>{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(3)}` : '-'}</td>
                 <td>{formatPercent(row.prob_assign)}</td>
                 <td>{dte}</td>
-                <td>{row.volume}</td>
-                <td>{oi}</td>
-                <td>{formatPercent(iv)}</td>
                 <td>{formatSma(row.sma_20, row.current_price)}</td>
                 <td>{formatSma(row.sma_50, row.current_price)}</td>
                 <td>{formatSma(row.sma_200, row.current_price)}</td>
                 <td>{formatRsi(row.rsi_14)}</td>
+                <td>{row.volume}</td>
+                <td>{oi}</td>
+                <td>{formatPercent(iv)}</td>
               </tr>
             );
           })}

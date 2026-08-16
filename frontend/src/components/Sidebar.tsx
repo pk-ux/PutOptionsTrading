@@ -51,7 +51,7 @@ export function Sidebar() {
           </div>
           <ol className="space-y-2.5 text-sm text-gray-300 list-decimal list-inside">
             <li>
-              Pick a <span className="text-white">Trade Idea</span> — stocks you'd want to own.
+              Pick admin curated <span className="text-white">Trade Ideas</span> or build watchlist of stocks you want to own.
             </li>
             <li>
               Pick <span className="text-white">Assignment risk</span> — DTE and chance of buying the stock.
@@ -133,14 +133,6 @@ export function Sidebar() {
               Calendar days left until expiry. Shorter DTE compounds annualized return;
               longer DTE gives the trade more room.
             </GuideTerm>
-            <GuideTerm term="Vol / OI">
-              Today's volume and open interest. Thin contracts are harder to enter or exit
-              at a fair price.
-            </GuideTerm>
-            <GuideTerm term="IV">
-              Implied volatility. High IV inflates premium — and the chance of a sharp move
-              against the strike.
-            </GuideTerm>
             <GuideTerm term="SMA 20 / 50 / 200">
               Simple moving averages. Green means price is above that average (uptrend);
               red means below. Puts under a rising trend often have more cushion.
@@ -148,6 +140,14 @@ export function Sidebar() {
             <GuideTerm term="RSI">
               14-day relative strength. Near 70 can be stretched to the upside; near 30 can
               be washed out. Context for whether a dip to your strike is likely.
+            </GuideTerm>
+            <GuideTerm term="Vol / OI">
+              Today's volume and open interest. Thin contracts are harder to enter or exit
+              at a fair price.
+            </GuideTerm>
+            <GuideTerm term="IV">
+              Implied volatility. High IV inflates premium — and the chance of a sharp move
+              against the strike.
             </GuideTerm>
           </dl>
         </div>
