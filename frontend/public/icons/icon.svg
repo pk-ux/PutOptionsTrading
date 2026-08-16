@@ -1,11 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="py" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#667eea"/>
-      <stop offset="100%" stop-color="#764ba2"/>
+      <stop offset="0%" stop-color="#7b8ef0"/>
+      <stop offset="100%" stop-color="#5b21b6"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="30%" y1="20%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#ffe08a"/>
+      <stop offset="55%" stop-color="#f5c542"/>
+      <stop offset="100%" stop-color="#d4a017"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" fill="url(#py)"/>
-  <path d="M160 148 L256 276 L352 148" fill="none" stroke="#fff" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M256 256 V382" fill="none" stroke="#fff" stroke-width="58" stroke-linecap="round"/>
+  <circle cx="128" cy="372" r="54" fill="url(#gold)"/>
+  <circle cx="128" cy="372" r="34" fill="none" stroke="#fff4c2" stroke-width="10"/>
+  <rect x="196" y="292" width="54" height="128" rx="24" fill="#fff"/>
+  <rect x="264" y="220" width="54" height="200" rx="24" fill="#fff"/>
+  <rect x="332" y="148" width="54" height="272" rx="24" fill="#fff"/>
+  <path d="M359 152 V82 H429" fill="none" stroke="#fff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M400 48 L448 82 L400 116 Z" fill="#fff"/>
 </svg>

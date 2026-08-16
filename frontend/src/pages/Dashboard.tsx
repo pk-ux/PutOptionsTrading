@@ -317,7 +317,7 @@ export function Dashboard() {
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <img
-              src="/favicon.svg"
+              src="/icons/icon-192.png"
               alt=""
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex-shrink-0"
             />
