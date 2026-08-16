@@ -56,17 +56,25 @@ input:focus, textarea:focus, select:focus {
   @apply bg-dark-900/50 rounded-xl border border-white/5 p-4;
 }
 
-/* Table styles */
+/* Table styles — separate collapse is required for sticky columns */
 .data-table {
-  @apply w-full border-collapse;
+  @apply text-sm;
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .data-table th {
-  @apply bg-primary-500/20 text-gray-200 font-semibold text-left px-4 py-3 border-b-2 border-primary-500/30;
+  @apply text-gray-200 font-semibold text-left px-2.5 py-2 border-b-2 border-primary-500/30 whitespace-nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background-color: color-mix(in srgb, #667eea 20%, #0f0f1a);
 }
 
 .data-table td {
-  @apply px-4 py-3 border-b border-white/5 transition-colors;
+  @apply px-2.5 py-2 border-b border-white/5 whitespace-nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table tbody tr {
@@ -83,6 +91,66 @@ input:focus, textarea:focus, select:focus {
 
 .data-table tbody tr:hover td {
   @apply border-primary-500/20;
+}
+
+/* Freeze Symbol, Price, Strike, Premium while scrolling horizontally */
+.data-table--sticky {
+  --sticky-1: 6rem;
+  --sticky-2: 10.5rem;
+  --sticky-3: 5rem;
+  --sticky-4: 5.25rem;
+}
+
+.data-table--sticky th:nth-child(-n+4),
+.data-table--sticky td:nth-child(-n+4) {
+  position: sticky;
+  white-space: nowrap;
+}
+
+.data-table--sticky th:nth-child(-n+4) {
+  z-index: 5;
+}
+
+.data-table--sticky td:nth-child(-n+4) {
+  z-index: 2;
+  background-color: #0f0f1a;
+}
+
+.data-table--sticky tbody tr:nth-child(even) td:nth-child(-n+4) {
+  background-color: color-mix(in srgb, white 2%, #0f0f1a);
+}
+
+.data-table--sticky tbody tr:hover td:nth-child(-n+4) {
+  background-color: color-mix(in srgb, #667eea 15%, #0f0f1a);
+}
+
+.data-table--sticky th:nth-child(1),
+.data-table--sticky td:nth-child(1) {
+  left: 0;
+  min-width: var(--sticky-1);
+  width: var(--sticky-1);
+}
+
+.data-table--sticky th:nth-child(2),
+.data-table--sticky td:nth-child(2) {
+  left: var(--sticky-1);
+  min-width: var(--sticky-2);
+  width: var(--sticky-2);
+}
+
+.data-table--sticky th:nth-child(3),
+.data-table--sticky td:nth-child(3) {
+  left: calc(var(--sticky-1) + var(--sticky-2));
+  min-width: var(--sticky-3);
+  width: var(--sticky-3);
+}
+
+.data-table--sticky th:nth-child(4),
+.data-table--sticky td:nth-child(4) {
+  left: calc(var(--sticky-1) + var(--sticky-2) + var(--sticky-3));
+  min-width: var(--sticky-4);
+  width: var(--sticky-4);
+  box-shadow: 8px 0 8px -6px rgba(0, 0, 0, 0.55);
 }
 
 /* Return color classes */

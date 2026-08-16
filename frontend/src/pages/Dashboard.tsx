@@ -350,10 +350,10 @@ export function Dashboard() {
 
       <div className="relative flex-1 min-h-0">
       {/* Main content */}
-      <main className="h-full overflow-y-auto p-4 sm:p-6">
+      <main className="h-full overflow-auto p-4 sm:p-6">
 
         {/* Filters and Trade Ideas selectors */}
-        <div className="space-y-3 mb-4 sm:mb-6 p-3 sm:p-4 bg-dark-800/50 rounded-xl border border-white/5">
+        <div className="sticky left-0 z-20 space-y-3 mb-4 sm:mb-6 p-3 sm:p-4 bg-dark-800/50 rounded-xl border border-white/5 w-[calc(100dvw-2rem)] sm:w-[calc(100dvw-3rem)]">
           <ChipSelector
             label="Trade Ideas"
             items={allTradeIdeas}
@@ -376,7 +376,7 @@ export function Dashboard() {
           />
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="sticky left-0 z-20 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 w-[calc(100dvw-2rem)] sm:w-[calc(100dvw-3rem)]">
           <button
             onClick={handleScreenAll}
             disabled={isScreening || symbols.length === 0 || !selectedFilter}
@@ -428,7 +428,7 @@ export function Dashboard() {
         {/* Results section */}
         {Object.keys(results).length > 0 ? (
           <>
-            <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+            <div className="sticky left-0 z-20 flex items-center justify-between mb-1 sm:mb-1.5 w-[calc(100dvw-2rem)] sm:w-[calc(100dvw-3rem)]">
               <h2 className="text-lg sm:text-xl font-semibold">
                 Results
                 {isScreening && (
@@ -460,7 +460,7 @@ export function Dashboard() {
               )}
             </div>
             {resultsCaption && (
-              <p className="text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4">
+              <p className="sticky left-0 z-20 text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4 w-[calc(100dvw-2rem)] sm:w-[calc(100dvw-3rem)]">
                 {resultsCaption}
               </p>
             )}

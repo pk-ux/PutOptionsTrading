@@ -137,8 +137,8 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
         </span>
       </div>
       
-      {/* Main metrics row */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-2">
+      {/* Main metrics: Strike/Premium, then Expiry, then Assign Risk/DTE */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-gray-500">Strike:</span>
           <span className="text-white font-medium">{formatCurrency(row.strike)}</span>
@@ -146,6 +146,16 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
         <div className="flex justify-between">
           <span className="text-gray-500">Premium:</span>
           <span className="text-white font-medium">{formatCurrency(premium)}</span>
+        </div>
+        <div className="col-span-2 flex justify-between">
+          <span className="text-gray-500">Expiry:</span>
+          <span className="text-gray-300">
+            <ExpiryWithEvents
+              expiry={row.expiry}
+              hasEarnings={row.has_earnings_before_expiry}
+              hasDividend={row.has_dividend_before_expiry}
+            />
+          </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Assign Risk:</span>
@@ -155,18 +165,6 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
           <span className="text-gray-500">DTE:</span>
           <span className="text-white font-medium">{dte}</span>
         </div>
-      </div>
-      
-      {/* Expiry row */}
-      <div className="flex justify-between text-sm border-t border-white/5 pt-2">
-        <span className="text-gray-500">Expiry:</span>
-        <span className="text-gray-300">
-          <ExpiryWithEvents 
-            expiry={row.expiry} 
-            hasEarnings={row.has_earnings_before_expiry} 
-            hasDividend={row.has_dividend_before_expiry} 
-          />
-        </span>
       </div>
       
       {/* Expandable details */}
@@ -224,18 +222,18 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
 // Desktop table component
 function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (symbol: string) => void }) {
   return (
-    <div className="overflow-x-auto rounded-xl shadow-lg shadow-black/20 border border-white/5">
-      <table className="data-table">
+    <div className="rounded-xl shadow-lg shadow-black/20 border border-white/5">
+      <table className="data-table data-table--sticky">
         <thead>
           <tr>
             <th>Symbol</th>
             <th>Price</th>
             <th>Strike</th>
             <th>Premium</th>
+            <th>Expiry</th>
             <th title="Annualized return">Ann. return</th>
             <th>Daily Decay</th>
             <th>Assign Risk</th>
-            <th>Expiry</th>
             <th>DTE</th>
             <th>Vol</th>
             <th>OI</th>
@@ -256,12 +254,12 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             return (
               <tr key={`${row.symbol}-${row.strike}-${row.expiry}-${index}`}>
                 <td className="font-medium">
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-1">
                     {row.symbol}
                     {onAnalyze && (
                       <button
                         onClick={() => onAnalyze(row.symbol)}
-                        className="p-1 hover:bg-primary-500/20 rounded transition-colors"
+                        className="p-0.5 hover:bg-primary-500/20 rounded transition-colors"
                         title="AI Analysis"
                       >
                         <Bot size={14} className="text-primary-400" />
@@ -273,19 +271,19 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
                 <td>{formatCurrency(row.strike)}</td>
                 <td>{formatCurrency(premium)}</td>
                 <td>
+                  <ExpiryWithEvents
+                    expiry={row.expiry}
+                    hasEarnings={row.has_earnings_before_expiry}
+                    hasDividend={row.has_dividend_before_expiry}
+                  />
+                </td>
+                <td>
                   <span className={getReturnClass(row.annualized_return)}>
                     {formatPercent(row.annualized_return)}
                   </span>
                 </td>
                 <td>{row.daily_decay_contract ? `$${row.daily_decay_contract.toFixed(3)}` : '-'}</td>
                 <td>{formatPercent(row.prob_assign)}</td>
-                <td>
-                  <ExpiryWithEvents 
-                    expiry={row.expiry} 
-                    hasEarnings={row.has_earnings_before_expiry} 
-                    hasDividend={row.has_dividend_before_expiry} 
-                  />
-                </td>
                 <td>{dte}</td>
                 <td>{row.volume}</td>
                 <td>{oi}</td>
