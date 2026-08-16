@@ -113,6 +113,10 @@ export function Sidebar() {
               earnings land first; a blue <span className="text-blue-400 font-semibold">D</span> means an
               ex-dividend. Both can reprice the stock before you are done.
             </GuideTerm>
+            <GuideTerm term="Discount">
+              How far below today's price your cost basis sits if assigned:
+              (price − strike − premium) ÷ price. Higher means a deeper discount to own the stock.
+            </GuideTerm>
             <GuideTerm term="Ann. return">
               Premium ÷ strike, annualized over days to expiry. This is how PutYield ranks
               income — not a guaranteed yield.

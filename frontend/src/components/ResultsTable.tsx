@@ -23,6 +23,17 @@ function formatPercent(value: number | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
+/** % below current price of cost basis if assigned: (price − strike − premium) / price */
+function assignmentDiscountPercent(
+  price: number | undefined,
+  strike: number | undefined,
+  premium: number,
+): number | undefined {
+  if (price === undefined || price === null || price <= 0) return undefined;
+  if (strike === undefined || strike === null) return undefined;
+  return ((price - strike - premium) * 100) / price;
+}
+
 function getReturnClass(value: number): string {
   if (value >= 50) return 'text-green-400';
   if (value >= 30) return 'text-emerald-400';
@@ -111,6 +122,7 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
   const dte = row.dte ?? row.calendar_days ?? 0;
   const oi = row.open_interest ?? row.openInterest ?? 0;
   const iv = row.implied_volatility ?? row.impliedVolatility ?? 0;
+  const discount = assignmentDiscountPercent(row.current_price, row.strike, premium);
   
   return (
     <div 
@@ -137,7 +149,7 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
         </span>
       </div>
       
-      {/* Main metrics: Strike/Premium, then Expiry, then Assign Risk/DTE */}
+      {/* Main metrics: Strike/Premium, Expiry + Discount, then Assign Risk/DTE */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-gray-500">Strike:</span>
@@ -147,15 +159,19 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
           <span className="text-gray-500">Premium:</span>
           <span className="text-white font-medium">{formatCurrency(premium)}</span>
         </div>
-        <div className="col-span-2 flex justify-between">
-          <span className="text-gray-500">Expiry:</span>
-          <span className="text-gray-300">
+        <div className="flex justify-between gap-2 min-w-0">
+          <span className="text-gray-500 flex-shrink-0">Expiry:</span>
+          <span className="text-gray-300 min-w-0">
             <ExpiryWithEvents
               expiry={row.expiry}
               hasEarnings={row.has_earnings_before_expiry}
               hasDividend={row.has_dividend_before_expiry}
             />
           </span>
+        </div>
+        <div className="flex justify-between" title="Discount to current price if assigned: (price − strike − premium) ÷ price">
+          <span className="text-gray-500">Discount:</span>
+          <span className="text-white font-medium">{formatPercent(discount) || '-'}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Assign Risk:</span>
@@ -231,6 +247,7 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             <th>Strike</th>
             <th>Premium</th>
             <th>Expiry</th>
+            <th title="Discount to current price if assigned: (price − strike − premium) ÷ price">Discount</th>
             <th title="Annualized return">Ann. return</th>
             <th>Daily Decay</th>
             <th>Assign Risk</th>
@@ -250,6 +267,7 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             const dte = row.dte ?? row.calendar_days ?? 0;
             const oi = row.open_interest ?? row.openInterest ?? 0;
             const iv = row.implied_volatility ?? row.impliedVolatility ?? 0;
+            const discount = assignmentDiscountPercent(row.current_price, row.strike, premium);
             
             return (
               <tr key={`${row.symbol}-${row.strike}-${row.expiry}-${index}`}>
@@ -276,6 +294,9 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
                     hasEarnings={row.has_earnings_before_expiry}
                     hasDividend={row.has_dividend_before_expiry}
                   />
+                </td>
+                <td title="Discount to current price if assigned">
+                  {formatPercent(discount) || '-'}
                 </td>
                 <td>
                   <span className={getReturnClass(row.annualized_return)}>
