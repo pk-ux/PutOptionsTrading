@@ -20,6 +20,7 @@ import { TradeIdeaForm } from '@/components/TradeIdeaForm';
 import { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import { useFiltersAndIdeas } from '@/hooks/useFiltersAndIdeas';
+import { buildRankedResults } from '@/utils/resultsSummary';
 import type { OptionResult, Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
 export function Dashboard() {
@@ -165,46 +166,17 @@ export function Dashboard() {
     }
   };
 
-  // Build summary from current results.
-  // Tickers whose options don't meet the filter criteria are kept in the
-  // results (so they remain selectable in the dropdown) but are excluded from
-  // the Summary and ordered last.
+  // Summary: one highest-return contract per ticker, tickers ranked by that return.
   const buildSummary = useCallback((currentResults: Record<string, OptionResult[]>) => {
-    const qualified: string[] = [];
-    const unqualified: string[] = [];
+    const ranked = buildRankedResults(currentResults);
+    const tickerViews = Object.keys(ranked).filter((key) => key !== 'Summary');
 
-    for (const symbol of Object.keys(currentResults)) {
-      const rows = currentResults[symbol];
-      if (!rows || rows.length === 0) continue;
-      if (rows[0].meets_criteria === false) {
-        unqualified.push(symbol);
-      } else {
-        qualified.push(symbol);
-      }
+    if (tickerViews.length === 0) {
+      return;
     }
 
-    // Reorder results so qualified tickers come first, unqualified last
-    const ordered: Record<string, OptionResult[]> = {};
-    for (const symbol of [...qualified, ...unqualified]) {
-      ordered[symbol] = currentResults[symbol];
-    }
-
-    const totalSymbols = qualified.length + unqualified.length;
-
-    if (totalSymbols > 1) {
-      const summaryResults = qualified.map((symbol) => currentResults[symbol][0]);
-      if (summaryResults.length > 0) {
-        setResults({ ...ordered, Summary: summaryResults });
-        setSelectedView('Summary');
-      } else {
-        // No ticker met the criteria - show the first one instead of an empty Summary
-        setResults(ordered);
-        setSelectedView(unqualified[0]);
-      }
-    } else if (totalSymbols === 1) {
-      setResults(ordered);
-      setSelectedView([...qualified, ...unqualified][0]);
-    }
+    setResults(ranked);
+    setSelectedView(ranked.Summary ? 'Summary' : tickerViews[0]);
   }, [setResults, setSelectedView]);
 
   // Get symbols from selected trade idea
@@ -233,7 +205,7 @@ export function Dashboard() {
           min_dte: selectedFilter.min_dte,
           min_volume: selectedFilter.min_volume,
           min_open_interest: selectedFilter.min_open_interest,
-          min_annualized_return: selectedFilter.min_annualized_return,
+          min_annualized_return: 0,
           max_assignment_probability: selectedFilter.max_assignment_probability,
         });
 
@@ -284,7 +256,7 @@ export function Dashboard() {
         min_dte: selectedFilter.min_dte,
         min_volume: selectedFilter.min_volume,
         min_open_interest: selectedFilter.min_open_interest,
-        min_annualized_return: selectedFilter.min_annualized_return,
+        min_annualized_return: 0,
         max_assignment_probability: selectedFilter.max_assignment_probability,
       });
 
@@ -319,12 +291,6 @@ export function Dashboard() {
   }
 
   const currentResults = results[selectedView] || [];
-
-  // A ticker is "unqualified" when its options don't meet the filter criteria.
-  // These are still shown for reference (excluded from Summary, ordered last).
-  const isUnqualified = (symbol: string) =>
-    symbol !== 'Summary' && results[symbol]?.[0]?.meets_criteria === false;
-  const viewingUnqualified = isUnqualified(selectedView);
 
   return (
     <div className="flex h-screen">
@@ -374,7 +340,7 @@ export function Dashboard() {
             loading={tradeIdeasLoading}
           />
           <ChipSelector
-            label="Filters"
+            label="Filters(Prob. Of Assignment)"
             items={allFilters}
             selectedId={selectedFilter?.id || null}
             onSelect={handleSelectFilter}
@@ -462,7 +428,7 @@ export function Dashboard() {
                   >
                     {viewOptions.map((option) => (
                       <option key={option} value={option}>
-                        {option}{isUnqualified(option) ? ' (no match)' : ''}
+                        {option}
                       </option>
                     ))}
                   </select>
@@ -473,12 +439,6 @@ export function Dashboard() {
                 </div>
               )}
             </div>
-
-            {viewingUnqualified && (
-              <div className="mb-3 sm:mb-4 px-3 sm:px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs sm:text-sm">
-                {selectedView} has no options meeting your return target. Showing contracts that match all other filter criteria for reference - these are excluded from the Summary.
-              </div>
-            )}
 
             <ResultsTable data={currentResults} title={selectedView} onAnalyze={handleAnalyze} />
 

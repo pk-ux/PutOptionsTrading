@@ -60,8 +60,9 @@ class TestFiltersAPI:
         )
         assert response.status_code == 200
         data = response.json()
-        # Name should be auto-generated
-        assert "DTE_15-45" in data["name"]
+        # Name should be auto-generated without a return cutoff
+        assert data["name"] == "DTE_15-45_VOL_10_OI_10_PROB_20"
+        assert "RET_" not in data["name"]
 
     def test_create_filter_limit(self, client: TestClient, auth_headers):
         """Test that user cannot create more than 10 filters"""

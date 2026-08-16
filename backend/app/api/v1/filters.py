@@ -123,7 +123,6 @@ async def create_filter(
             filter_data.max_dte,
             filter_data.min_volume,
             filter_data.min_open_interest,
-            filter_data.min_annualized_return,
             filter_data.max_assignment_probability,
         )
     

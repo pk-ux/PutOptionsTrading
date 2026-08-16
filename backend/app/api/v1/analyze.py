@@ -35,8 +35,8 @@ def get_ai_settings(db: Session) -> AISettings:
     return settings
 
 
-def get_cached_analysis(db: Session, symbol: str) -> dict | None:
-    """Get cached analysis from database if available and not expired."""
+def get_cached_analysis(db: Session, symbol: str, provider: str) -> dict | None:
+    """Get cached analysis from database if available, not expired, and for this LLM."""
     symbol = symbol.upper()
     now = datetime.utcnow()
     
@@ -48,6 +48,10 @@ def get_cached_analysis(db: Session, symbol: str) -> dict | None:
     if cached:
         try:
             result = json.loads(cached.analysis_json)
+            cached_provider = (result.get('llm_provider') or "").lower()
+            if cached_provider and cached_provider != provider.lower():
+                print(f"[Analysis Cache MISS] {symbol} (cached {cached_provider}, requested {provider})")
+                return None
             result['cached_at'] = to_market_iso(cached.created_at)
             result['expires_at'] = to_market_iso(cached.expires_at)
             print(f"[Analysis Cache HIT] {symbol}")
@@ -135,7 +139,7 @@ async def analyze_stock_endpoint(
     
     # Check cache first (unless force refresh)
     if not force_refresh and ai_settings.cache_enabled:
-        cached = get_cached_analysis(db, symbol)
+        cached = get_cached_analysis(db, symbol, ai_settings.active_provider)
         if cached:
             return cached
     

@@ -72,6 +72,6 @@ class Filter(Base):
     
     @staticmethod
     def generate_name(min_dte: int, max_dte: int, min_volume: int, min_open_interest: int,
-                      min_annualized_return: float, max_assignment_probability: int) -> str:
+                      max_assignment_probability: int) -> str:
         """Generate a descriptive name from filter parameters"""
-        return f"DTE_{min_dte}-{max_dte}_VOL_{min_volume}_OI_{min_open_interest}_RET_{int(min_annualized_return)}_PROB_{max_assignment_probability}"
+        return f"DTE_{min_dte}-{max_dte}_VOL_{min_volume}_OI_{min_open_interest}_PROB_{max_assignment_probability}"

@@ -29,7 +29,6 @@ from .options_screener import (
     get_options_chain_alpaca,
     calculate_metrics,
     screen_options as filter_options,
-    get_fallback_options,
     format_output,
     get_earnings_dividend_dates,
 )
@@ -44,7 +43,6 @@ from ..core.cache import (
     set_cached_news,
     get_cached_event_dates,
     set_cached_event_dates,
-    get_config_hash,
     is_cache_disabled,
 )
 from ..core.api_provider import get_active_provider, get_use_midpoint_pricing
@@ -70,7 +68,7 @@ def screen_symbols(
         min_dte: Minimum days to expiration
         min_volume: Minimum option volume
         min_open_interest: Minimum open interest
-        min_annualized_return: Minimum annualized return percentage
+        min_annualized_return: Unused. Kept for API compatibility; return is not a cutoff.
         max_assignment_probability: Maximum assignment probability percentage
     
     Returns:
@@ -192,11 +190,13 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     import pandas as pd
     
     used_yahoo = False
-    config_hash = get_config_hash(config)
     active_provider = get_active_provider()
+    use_midpoint = get_use_midpoint_pricing()
+    min_dte = config['options_strategy'].get('min_dte', 0)
+    max_dte = config['options_strategy']['max_dte']
     
     # Check cache for stock price first
-    cached_price_data = get_cached_stock_price(symbol)
+    cached_price_data = get_cached_stock_price(symbol, active_provider, use_midpoint)
     current_price = None
     price_change_percent = None
     
@@ -227,16 +227,18 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
             current_price = price_data.get('price')
             price_change_percent = price_data.get('change_percent')
             # Cache the full price data
-            set_cached_stock_price(symbol, price_data)
+            set_cached_stock_price(symbol, price_data, active_provider, use_midpoint)
             print(f"[CACHE SET] Price for {symbol}: ${current_price}" + (f" ({'+' if price_change_percent and price_change_percent >= 0 else ''}{price_change_percent:.2f}%)" if price_change_percent is not None else ""))
     
     if current_price is None:
         return [], used_yahoo
     
-    # Check cache for options chain
-    # Include provider in cache key to separate Massive vs Alpaca data
-    provider_config_hash = f"{active_provider}_{config_hash}"
-    cached_options = get_cached_options_chain(symbol, provider_config_hash)
+    # Check cache for options chain.
+    # Keyed by provider, DTE window, and midpoint only — screening filters
+    # (volume, OI, assignment probability) are applied after the cache read.
+    cached_options = get_cached_options_chain(
+        symbol, active_provider, min_dte, max_dte, use_midpoint
+    )
     if cached_options is not None:
         print(f"[CACHE HIT] Options chain for {symbol} ({len(cached_options)} options)")
         options = pd.DataFrame(cached_options)
@@ -255,7 +257,10 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
         
         if not options.empty:
             # Cache the raw options data
-            set_cached_options_chain(symbol, provider_config_hash, options.to_dict(orient='records'))
+            set_cached_options_chain(
+                symbol, options.to_dict(orient='records'),
+                active_provider, min_dte, max_dte, use_midpoint,
+            )
             print(f"[CACHE SET] Options chain for {symbol} ({len(options)} options)")
     
     if options.empty:
@@ -265,17 +270,6 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     options = calculate_metrics(options, current_price)
     # Pass api_source to enable volume fetching for Alpaca after other filters
     filtered = filter_options(options, config, api_source=active_provider)
-
-    # Track whether this symbol's options fully meet the screening criteria.
-    # When nothing fully qualifies, fall back to contracts that match every
-    # criterion EXCEPT the minimum annualized return so the ticker remains
-    # visible in the results dropdown (excluded from the Summary and pushed to
-    # the end by the frontend). If even that relaxed set is empty, the ticker
-    # does not appear at all.
-    meets_criteria = not filtered.empty
-    if filtered.empty:
-        filtered = get_fallback_options(options, config, api_source=active_provider)
-
     formatted = format_output(filtered, current_price)
     
     if formatted.empty:
@@ -285,7 +279,6 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
     results = formatted.to_dict(orient='records')
     for row in results:
         row['price_change_percent'] = price_change_percent
-        row['meets_criteria'] = meets_criteria
     
     return results, used_yahoo
 
@@ -305,8 +298,8 @@ def get_news(symbol: str, limit: int = 10, max_age_days: int = 7) -> List[Dict[s
     """
     active_provider = get_active_provider()
     
-    # Check cache first (use provider-specific cache key)
-    cached_news = get_cached_news(symbol)
+    # Check cache first (provider + request shape, so Alpaca/Massive don't mix)
+    cached_news = get_cached_news(symbol, active_provider, max_age_days, limit)
     if cached_news is not None:
         print(f"[CACHE HIT] News for {symbol} ({len(cached_news)} items)")
         return cached_news[:limit]  # Respect limit even from cache
@@ -332,7 +325,7 @@ def get_news(symbol: str, limit: int = 10, max_age_days: int = 7) -> List[Dict[s
     
     if news:
         # Cache news
-        set_cached_news(symbol, news)
+        set_cached_news(symbol, news, active_provider, max_age_days, limit)
         print(f"[CACHE SET] News for {symbol} ({len(news)} items)")
     
     return news

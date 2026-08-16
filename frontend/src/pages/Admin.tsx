@@ -373,8 +373,7 @@ export function Admin() {
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
                       DTE: {filter.min_dte}-{filter.max_dte} | Vol: {filter.min_volume} |
-                      OI: {filter.min_open_interest} | Ret: {filter.min_annualized_return}% |
-                      Prob: {filter.max_assignment_probability}%
+                      OI: {filter.min_open_interest} | Prob: {filter.max_assignment_probability}%
                     </p>
                   </div>
                   <div className="flex items-center gap-1 ml-2">

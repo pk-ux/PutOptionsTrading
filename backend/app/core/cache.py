@@ -62,6 +62,7 @@ class InMemoryCache:
     
     def set(self, key: str, value: str, ex: int = 300) -> None:
         """Set value with expiration (ex = seconds)"""
+        self._evict_expired()
         expires_at = datetime.now() + timedelta(seconds=ex)
         self._cache[key] = (value, expires_at)
     
@@ -69,6 +70,13 @@ class InMemoryCache:
         """Delete a key from cache"""
         if key in self._cache:
             del self._cache[key]
+
+    def delete_by_prefix(self, prefix: str) -> int:
+        """Delete all keys that start with prefix. Returns count removed."""
+        keys = [k for k in self._cache if k.startswith(prefix)]
+        for key in keys:
+            del self._cache[key]
+        return len(keys)
     
     def flushall(self) -> None:
         """Clear all cached data"""
@@ -77,6 +85,12 @@ class InMemoryCache:
     def ping(self) -> bool:
         """Check if cache is available"""
         return True
+
+    def _evict_expired(self) -> None:
+        now = datetime.now()
+        expired = [k for k, (_, expires_at) in self._cache.items() if now >= expires_at]
+        for key in expired:
+            del self._cache[key]
 
 
 class RedisCache:
@@ -105,6 +119,14 @@ class RedisCache:
     def delete(self, key: str) -> None:
         """Delete a key from cache"""
         self._client.delete(key)
+
+    def delete_by_prefix(self, prefix: str) -> int:
+        """Delete keys with this prefix. Avoids FLUSHALL on a shared Redis."""
+        count = 0
+        for key in self._client.scan_iter(match=f"{prefix}*"):
+            self._client.delete(key)
+            count += 1
+        return count
     
     def flushall(self) -> None:
         """Clear all cached data (use with caution!)"""
@@ -182,31 +204,32 @@ def load_cache_settings_from_db() -> Dict[str, Any]:
     
     try:
         db = SessionLocal()
-        settings = db.query(CacheSettings).filter(CacheSettings.id == 1).first()
-        
-        if not settings:
-            # Create default settings
-            settings = CacheSettings(
-                id=1,
-                cache_enabled=True,
-                ttl_stock_price=180,
-                ttl_options_chain=300,
-                ttl_news=900,
-                ttl_event_dates=604800,  # 1 week for earnings/dividend dates
-            )
-            db.add(settings)
-            db.commit()
-            db.refresh(settings)
-            print("Created default cache settings in database")
-        
-        _cache_settings = settings.to_dict()
-        print(f"Loaded cache settings: enabled={_cache_settings['cache_enabled']}, "
-              f"ttl_stock={_cache_settings['ttl_stock_price']}s, "
-              f"ttl_options={_cache_settings['ttl_options_chain']}s, "
-              f"ttl_news={_cache_settings['ttl_news']}s")
-        
-        db.close()
-        return _cache_settings
+        try:
+            settings = db.query(CacheSettings).filter(CacheSettings.id == 1).first()
+            
+            if not settings:
+                # Create default settings
+                settings = CacheSettings(
+                    id=1,
+                    cache_enabled=True,
+                    ttl_stock_price=180,
+                    ttl_options_chain=300,
+                    ttl_news=900,
+                    ttl_event_dates=604800,  # 1 week for earnings/dividend dates
+                )
+                db.add(settings)
+                db.commit()
+                db.refresh(settings)
+                print("Created default cache settings in database")
+            
+            _cache_settings = settings.to_dict()
+            print(f"Loaded cache settings: enabled={_cache_settings['cache_enabled']}, "
+                  f"ttl_stock={_cache_settings['ttl_stock_price']}s, "
+                  f"ttl_options={_cache_settings['ttl_options_chain']}s, "
+                  f"ttl_news={_cache_settings['ttl_news']}s")
+            return _cache_settings
+        finally:
+            db.close()
     except Exception as e:
         print(f"Error loading cache settings from database: {e}")
         print("Using default cache settings")
@@ -284,7 +307,43 @@ def cache_set_json(key: str, value: Any, ttl: int = 300) -> None:
     cache.set(key, json.dumps(value), ex=ttl)
 
 
-def get_cached_stock_price(symbol: str) -> Optional[Any]:
+def clear_app_cache() -> int:
+    """
+    Drop this app's market-data keys only (price/options/news/events).
+    Does not FLUSHALL, so a shared Redis is left intact.
+    """
+    cache = get_cache()
+    deleted = 0
+    for prefix in ("price:", "options:", "news:", "events:"):
+        deleted += cache.delete_by_prefix(prefix)
+    return deleted
+
+
+def _normalize_symbol(symbol: str) -> str:
+    return (symbol or "").upper().strip()
+
+
+def _price_key(symbol: str, provider: str, use_midpoint: bool) -> str:
+    return make_cache_key("price", _normalize_symbol(symbol), provider, int(bool(use_midpoint)))
+
+
+def _options_key(symbol: str, provider: str, min_dte: int, max_dte: int, use_midpoint: bool) -> str:
+    # Raw chains are fetched by DTE window + provider pricing, then filtered in-process.
+    return make_cache_key(
+        "options",
+        _normalize_symbol(symbol),
+        provider,
+        int(min_dte),
+        int(max_dte),
+        int(bool(use_midpoint)),
+    )
+
+
+def _news_key(symbol: str, provider: str, max_age_days: int, limit: int) -> str:
+    return make_cache_key("news", _normalize_symbol(symbol), provider, int(max_age_days), int(limit))
+
+
+def get_cached_stock_price(symbol: str, provider: str, use_midpoint: bool = False) -> Optional[Any]:
     """
     Get cached stock price data.
     
@@ -292,11 +351,10 @@ def get_cached_stock_price(symbol: str) -> Optional[Any]:
         Either a dict with {price, previous_close, change_percent} (new format)
         or a float (legacy format for backward compatibility)
     """
-    key = make_cache_key("price", symbol)
-    return cache_get_json(key)
+    return cache_get_json(_price_key(symbol, provider, use_midpoint))
 
 
-def set_cached_stock_price(symbol: str, price_data: Any) -> None:
+def set_cached_stock_price(symbol: str, price_data: Any, provider: str, use_midpoint: bool = False) -> None:
     """
     Cache stock price data with configured TTL.
     
@@ -304,44 +362,58 @@ def set_cached_stock_price(symbol: str, price_data: Any) -> None:
         symbol: Stock ticker symbol
         price_data: Either a dict with {price, previous_close, change_percent}
                    or a float (legacy format for backward compatibility)
+        provider: Active market-data provider
+        use_midpoint: Alpaca mid-point pricing flag
     """
-    key = make_cache_key("price", symbol)
-    cache_set_json(key, price_data, ttl=get_ttl_stock_price())
+    cache_set_json(_price_key(symbol, provider, use_midpoint), price_data, ttl=get_ttl_stock_price())
 
 
-def get_cached_options_chain(symbol: str, config_hash: str) -> Optional[list]:
-    """Get cached options chain"""
-    key = make_cache_key("options", symbol, config_hash)
-    return cache_get_json(key)
+def get_cached_options_chain(
+    symbol: str,
+    provider: str,
+    min_dte: int,
+    max_dte: int,
+    use_midpoint: bool = False,
+) -> Optional[list]:
+    """Get cached raw options chain for this DTE window and provider."""
+    return cache_get_json(_options_key(symbol, provider, min_dte, max_dte, use_midpoint))
 
 
-def set_cached_options_chain(symbol: str, config_hash: str, options: list) -> None:
-    """Cache options chain with configured TTL"""
-    key = make_cache_key("options", symbol, config_hash)
-    cache_set_json(key, options, ttl=get_ttl_options_chain())
+def set_cached_options_chain(
+    symbol: str,
+    options: list,
+    provider: str,
+    min_dte: int,
+    max_dte: int,
+    use_midpoint: bool = False,
+) -> None:
+    """Cache raw options chain with configured TTL"""
+    cache_set_json(
+        _options_key(symbol, provider, min_dte, max_dte, use_midpoint),
+        options,
+        ttl=get_ttl_options_chain(),
+    )
 
 
-def get_cached_news(symbol: str) -> Optional[list]:
+def get_cached_news(symbol: str, provider: str, max_age_days: int = 7, limit: int = 10) -> Optional[list]:
     """Get cached news"""
-    key = make_cache_key("news", symbol)
-    return cache_get_json(key)
+    return cache_get_json(_news_key(symbol, provider, max_age_days, limit))
 
 
-def set_cached_news(symbol: str, news: list) -> None:
+def set_cached_news(symbol: str, news: list, provider: str, max_age_days: int = 7, limit: int = 10) -> None:
     """Cache news with configured TTL"""
-    key = make_cache_key("news", symbol)
-    cache_set_json(key, news, ttl=get_ttl_news())
+    cache_set_json(_news_key(symbol, provider, max_age_days, limit), news, ttl=get_ttl_news())
 
 
 def get_cached_event_dates(symbol: str) -> Optional[Dict]:
     """Get cached event dates (earnings/dividend) for a symbol"""
-    key = make_cache_key("events", symbol)
+    key = make_cache_key("events", _normalize_symbol(symbol))
     return cache_get_json(key)
 
 
 def set_cached_event_dates(symbol: str, data: Dict) -> None:
     """Cache event dates with configured TTL (default 1 week)"""
-    key = make_cache_key("events", symbol)
+    key = make_cache_key("events", _normalize_symbol(symbol))
     cache_set_json(key, data, ttl=get_ttl_event_dates())
 
 

@@ -17,7 +17,7 @@ class FilterBase(BaseModel):
     max_dte: int = Field(..., ge=0, le=365)
     min_volume: int = Field(..., ge=0)
     min_open_interest: int = Field(..., ge=0)
-    min_annualized_return: float = Field(..., ge=0, le=1000)
+    min_annualized_return: float = Field(0, ge=0, le=1000)
     max_assignment_probability: int = Field(..., ge=0, le=100)
 
 

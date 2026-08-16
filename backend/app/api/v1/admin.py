@@ -101,7 +101,6 @@ async def create_system_filter(
             filter_data.max_dte,
             filter_data.min_volume,
             filter_data.min_open_interest,
-            filter_data.min_annualized_return,
             filter_data.max_assignment_probability,
         )
     
@@ -549,9 +548,10 @@ async def update_cache_settings(
     db: Session = Depends(get_db)
 ):
     """Update cache settings (admin only)."""
-    from ...core.cache import update_cache_settings_in_memory
+    from ...core.cache import update_cache_settings_in_memory, clear_app_cache
     
     settings = _get_or_create_cache_settings(db)
+    was_enabled = settings.cache_enabled
     
     # Update fields that were provided
     update_data = data.model_dump(exclude_unset=True)
@@ -560,6 +560,11 @@ async def update_cache_settings(
     
     db.commit()
     db.refresh(settings)
+
+    # Drop stale entries when caching is turned off so a later re-enable
+    # cannot serve data from before the disable.
+    if was_enabled and not settings.cache_enabled:
+        clear_app_cache()
     
     # Update in-memory cache settings
     update_cache_settings_in_memory(settings.to_dict())

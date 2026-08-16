@@ -407,7 +407,6 @@ def screen_options(
     options_df: pd.DataFrame,
     config: dict,
     api_source: str = "massive",
-    apply_return_filter: bool = True,
 ) -> pd.DataFrame:
     """
     Apply screening criteria to filter options.
@@ -415,14 +414,13 @@ def screen_options(
     For Alpaca API: Volume is fetched AFTER all other filters are applied
     to minimize API calls (only fetch volume for filtered contracts).
     
+    Annualized return is never used as a cutoff. Callers rank remaining
+    contracts by return (best trade per ticker) instead of dropping them.
+    
     Args:
         options_df: DataFrame with options data
         config: Configuration dictionary with screening criteria
         api_source: API source ("massive", "alpaca", or "yahoo")
-        apply_return_filter: When False, the minimum annualized return filter is
-            skipped (all other criteria still apply). Used to build the
-            dropdown-only set of tickers that match every criterion except
-            rate of return.
         
     Returns:
         Filtered DataFrame with options meeting the requested criteria
@@ -448,13 +446,6 @@ def screen_options(
         (options_df['delta'] >= -max_prob) &
         (options_df['out_of_the_money'])
     )
-
-    # The annualized return filter is optional so callers can build a relaxed
-    # set (all criteria except rate of return) for the results dropdown.
-    if apply_return_filter:
-        non_volume_conditions &= (
-            options_df['annualized_return'] >= criteria['min_annualized_return']
-        )
     
     filtered = options_df[non_volume_conditions].copy()
     
@@ -494,31 +485,6 @@ def screen_options(
     )
     
     return filtered.head(config['output']['max_results'])
-
-
-def get_fallback_options(options_df: pd.DataFrame, config: dict, api_source: str = "massive") -> pd.DataFrame:
-    """
-    Build the dropdown-only set of options for a symbol whose chain does NOT
-    fully meet the screening criteria.
-
-    A ticker qualifies for the dropdown when it matches EVERY filter criterion
-    (open interest, assignment probability/delta, OTM, volume) EXCEPT the
-    minimum annualized return. This lets the ticker remain visible for
-    reference while still being excluded from the Summary (which requires all
-    criteria, including rate of return).
-
-    If no contracts pass even this relaxed set, an empty DataFrame is returned
-    and the ticker does not appear at all.
-
-    Args:
-        options_df: DataFrame with options data (after calculate_metrics)
-        config: Configuration dictionary
-        api_source: API source ("massive", "alpaca", or "yahoo")
-
-    Returns:
-        DataFrame with options matching all criteria except return (may be empty)
-    """
-    return screen_options(options_df, config, api_source=api_source, apply_return_filter=False)
 
 
 def format_output(filtered_df: pd.DataFrame, current_price: Optional[float] = None) -> pd.DataFrame:

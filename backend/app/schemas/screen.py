@@ -14,7 +14,7 @@ class ScreenRequest(BaseModel):
     min_dte: int = 15
     min_volume: int = 10
     min_open_interest: int = 10
-    min_annualized_return: float = 20.0
+    min_annualized_return: float = 0.0  # Unused; return is ranked, not used as a cutoff
     max_assignment_probability: int = 20
 
 
@@ -32,7 +32,7 @@ class OptionResult(BaseModel):
     volume: int
     open_interest: int
     implied_volatility: float
-    meets_criteria: bool = True  # False when shown for reference only (excluded from Summary)
+    meets_criteria: bool = True  # Unused; kept for API compatibility
 
 
 class ScreenResponse(BaseModel):

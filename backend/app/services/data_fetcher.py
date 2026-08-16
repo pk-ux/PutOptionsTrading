@@ -11,6 +11,7 @@ import yfinance as yf
 import numpy as np
 
 from ..core.market_clock import market_today
+from ..core.cache import is_cache_disabled
 
 logger = logging.getLogger(__name__)
 
@@ -842,14 +843,15 @@ def fetch_spy_data(days: int = 30) -> List[Dict[str, Any]]:
     cache_key = f"spy_{days}"
     
     # Simple time-based cache: refresh every 5 minutes
-    if cache_key in _spy_cache:
+    if not is_cache_disabled() and cache_key in _spy_cache:
         cached_time = _spy_cache.get(f"{cache_key}_time")
         if cached_time and (datetime.now() - cached_time).total_seconds() < 300:
             return _spy_cache[cache_key]
     
     spy_history = fetch_price_history('SPY', days=days)
-    _spy_cache[cache_key] = spy_history
-    _spy_cache[f"{cache_key}_time"] = datetime.now()
+    if not is_cache_disabled():
+        _spy_cache[cache_key] = spy_history
+        _spy_cache[f"{cache_key}_time"] = datetime.now()
     
     return spy_history
 

@@ -90,10 +90,6 @@ export function Sidebar() {
                   <p className="text-white">{selectedFilter.min_open_interest}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-xs">Min Return</p>
-                  <p className="text-white">{selectedFilter.min_annualized_return}%</p>
-                </div>
-                <div className="col-span-2">
                   <p className="text-gray-500 text-xs">Max Assignment Probability</p>
                   <p className="text-white">{selectedFilter.max_assignment_probability}%</p>
                 </div>
