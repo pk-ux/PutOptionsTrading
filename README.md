@@ -8,6 +8,16 @@
 
 Interactive web application that scans put option chains for a list of stocks, computes key metrics (delta, annualized return, implied volatility), and highlights candidates that meet your custom filters. Ideal for options traders looking for high-probability, cash-secured put opportunities.
 
+## Screenshots
+
+**Desktop** — screen cash-secured puts by trade idea and assignment risk, then compare contracts in a dense results table.
+
+![PutYield desktop screener](docs/screenshots/desktop.png)
+
+**Mobile** — the same workflow on a phone, with per-stock cards for strike, premium, expiry, and annualized return.
+
+<img src="docs/screenshots/mobile.png" alt="PutYield mobile results cards" width="420" />
+
 ## Features
 
 - **Professional-grade Greeks**: Delta, gamma, theta, vega directly from Massive.com or Alpaca API
