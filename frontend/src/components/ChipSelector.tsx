@@ -169,8 +169,10 @@ export function ChipSelector<T extends { id: string; name: string; is_system: bo
             {onCreateNew && (
               <button
                 onClick={onCreateNew}
+                aria-label="Build your own"
+                title="Build your own"
                 className="
-                  inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium
+                  inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-sm font-medium
                   bg-transparent border border-dashed border-primary-500/50
                   text-primary-400 hover:text-primary-300
                   hover:bg-primary-500/10 hover:border-primary-400
@@ -178,7 +180,7 @@ export function ChipSelector<T extends { id: string; name: string; is_system: bo
                 "
               >
                 <Plus size={16} />
-                <span>Build your own</span>
+                <span className="hidden sm:inline">Build your own</span>
               </button>
             )}
           </>
