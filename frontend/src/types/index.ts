@@ -422,15 +422,32 @@ export interface AISettingsUpdate {
 export interface BreakoutScannerSettings {
   enabled: boolean;
   universe: string[];
+  universe_mode: string;        // "curated" | "auto"
+  auto_universe_size: number;   // max symbols in auto mode
   top_n: number;
   deep_dive_n: number;
   use_unusual_whales: boolean;
   weights: Record<string, number>;
+  /** Weights after defaults are merged and renormalized to 1.0. */
+  effective_weights: Record<string, number>;
   min_price: number;
   max_price: number;
   min_avg_volume: number;
   require_above_sma200: boolean;
   typical_csp_dte: number;
+  /** Automatic scheduled scan. Manual runs work regardless of this. */
+  auto_scan_enabled: boolean;
+  /** "HH:MM" 24-hour, local to auto_scan_timezone. */
+  auto_scan_time: string;
+  /** IANA zone name, e.g. "America/New_York". */
+  auto_scan_timezone: string;
+  /** Python weekday numbering: 0 = Monday .. 6 = Sunday. */
+  auto_scan_days: number[];
+  /** Server-rendered summary, e.g. "16:30 America/New_York on Mon,Tue,Wed,Thu,Fri". */
+  auto_scan_summary: string;
+  last_auto_run_at: string | null;
+  /** Resolved server-side so the UI never reimplements the schedule math. */
+  next_auto_run_at: string | null;
   last_run_at: string | null;
   last_run_status: string;
   last_run_message: string | null;
@@ -456,6 +473,8 @@ export interface BreakoutMarketContext {
 export interface BreakoutScannerSettingsUpdate {
   enabled?: boolean;
   universe?: string[];
+  universe_mode?: string;
+  auto_universe_size?: number;
   top_n?: number;
   deep_dive_n?: number;
   use_unusual_whales?: boolean;
@@ -465,6 +484,10 @@ export interface BreakoutScannerSettingsUpdate {
   min_avg_volume?: number;
   require_above_sma200?: boolean;
   typical_csp_dte?: number;
+  auto_scan_enabled?: boolean;
+  auto_scan_time?: string;
+  auto_scan_timezone?: string;
+  auto_scan_days?: number[];
 }
 
 export interface BreakoutScanResultItem {
@@ -474,9 +497,9 @@ export interface BreakoutScanResultItem {
   setup_type: string | null;
   pivot_price: number | null;
   current_price: number | null;
-  breakout_trigger: boolean;
   volume_expansion: number | null;
   pct_from_52wk_high: number | null;
+  pct_to_pivot: number | null;
   iv_rank: number | null;
   implied_move: number | null;
   iv_vs_realized: number | null;

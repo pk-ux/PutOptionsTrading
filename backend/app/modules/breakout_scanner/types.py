@@ -11,16 +11,16 @@ from typing import Any, Dict, List, Optional
 
 
 # Default factor-group weights (must sum to ~1.0). Tuned for *pre-breakout*
-# detection with a first-class Unusual Whales smart-money layer plus a breakout
-# confirmation group so released setups are rewarded over still-coiling ones.
+# detection: names that have already broken out are excluded up front, so every
+# group here measures how *ready* a still-coiling name is, never confirmation.
 DEFAULT_WEIGHTS: Dict[str, float] = {
-    "flow_oi": 0.20,          # UW bullish options flow + real OI accumulation
-    "compression_vcp": 0.20,  # price-structure compression / VCP / volume dry-up / base
-    "leadership": 0.15,       # relative strength vs SPY + 52wk-high proximity + RS-line high
-    "confirmation": 0.15,     # volume expansion + confirmed pivot breakout
-    "darkpool_smart": 0.12,   # UW dark-pool blocks + insider/congress buying
-    "gex": 0.08,              # UW dealer gamma exposure regime (graded)
-    "pivot": 0.10,            # proximity to a clean breakout pivot
+    "flow_oi": 0.20,           # UW bullish options flow + real OI accumulation
+    "compression_vcp": 0.20,   # compression / VCP / volume dry-up / base quality
+    "base_construction": 0.10, # base maturity + up/down volume + tight closes
+    "leadership": 0.16,        # relative strength vs SPY/sector + 52wk-high proximity
+    "darkpool_smart": 0.12,    # UW dark-pool blocks + insider/congress buying
+    "gex": 0.08,               # UW dealer gamma exposure regime (graded)
+    "pivot": 0.14,             # ATR-normalized proximity to a clean breakout pivot
 }
 
 
@@ -46,6 +46,10 @@ class ScannerConfig:
     # CSP context
     typical_csp_dte: int = 35            # earnings-before-expiry window
 
+    # Universe source
+    universe_mode: str = "curated"         # "curated" | "auto"
+    auto_universe_size: int = 300          # max symbols to fetch in auto mode
+
     # Toggles
     use_unusual_whales: bool = True
 
@@ -69,10 +73,10 @@ class ScanCandidate:
     pivot_price: Optional[float] = None
     current_price: Optional[float] = None
 
-    # Breakout state / structure context
-    breakout_trigger: bool = False
+    # Structure context
     volume_expansion: Optional[float] = None   # latest day volume vs 50d avg (ratio)
     pct_from_52wk_high: Optional[float] = None  # percent below the 52-week high
+    pct_to_pivot: Optional[float] = None        # percent still to travel to the pivot
 
     # CSP / options context (mostly from Unusual Whales)
     iv_rank: Optional[float] = None
@@ -100,9 +104,9 @@ class ScanCandidate:
             "setup_type": self.setup_type,
             "pivot_price": self.pivot_price,
             "current_price": self.current_price,
-            "breakout_trigger": self.breakout_trigger,
             "volume_expansion": self.volume_expansion,
             "pct_from_52wk_high": self.pct_from_52wk_high,
+            "pct_to_pivot": self.pct_to_pivot,
             "iv_rank": self.iv_rank,
             "implied_move": self.implied_move,
             "iv_vs_realized": self.iv_vs_realized,

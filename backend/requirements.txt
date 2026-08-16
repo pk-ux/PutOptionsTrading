@@ -26,6 +26,10 @@ stripe>=7.0.0
 # Environment variables
 python-dotenv>=1.0.0
 
+# IANA timezone database for zoneinfo (python:*-slim images ship without it,
+# which the breakout scanner's wall-clock schedule depends on)
+tzdata>=2024.1
+
 # Data processing
 pandas>=2.0.0,<3.0.0
 numpy>=1.24.0,<3.0.0

@@ -15,11 +15,13 @@ picks are published as the **"Momentum Stocks"** trade idea, primarily to suppor
 
 Design tenets:
 
-- **Leading indicators + confirmation.** Volatility compression, contraction, relative
-  strength, pivot proximity, and smart-money options flow identify *coiling* names; a
-  dedicated **breakout-confirmation** group (volume expansion + a confirmed pivot break)
-  separates "watch" setups from "go" setups. Never lagging triggers (MACD, SMA-cross,
-  raw RSI level).
+- **Pre-breakout only.** A name that has *already* closed above its pivot on expanding
+  volume is excluded in Stage 1. The scanner exists to answer "what is about to break
+  out?", so a confirmed breakout is out of scope by definition, not merely down-weighted.
+  Every factor group therefore measures *readiness*, never confirmation.
+- **Leading indicators.** Volatility compression, contraction, base construction,
+  relative strength, pivot proximity, and smart-money options flow identify *coiling*
+  names. Never lagging triggers (MACD, SMA-cross, raw RSI level).
 - **Regime-aware.** A market-context layer (`market_context.py`) condenses the broad tape
   into a 0–100 fear/greed score and a `regime_scale` multiplier so the same setup ranks
   lower in a risk-off tape than a risk-on one. We don't fight the market.
@@ -28,8 +30,18 @@ Design tenets:
 - **Graceful degradation.** If Unusual Whales (UW) is unavailable, the scan still runs on
   price structure alone and the UW factor weights are redistributed. Every external input
   (UW endpoint, VIX, index series) degrades to neutral rather than aborting the scan.
+  Missing UW factors initialize to `None` (→ neutral 0.5 percentile rank), not `0.0`
+  (which would rank dead-last). This applies to the non-ranked `gex` group too, which
+  maps a missing score to `NEUTRAL` rather than letting `None or 0.0` collapse it.
 - **Transparent scoring.** Every candidate carries a `factor_breakdown` (incl. the applied
-  `regime_scale`) so a score can be explained.
+  `regime_scale`) so a score can be explained. The admin UI renders this per candidate as
+  a per-group value × weight = contribution panel.
+- **Order-independent ranking.** `percentile_rank` gives tied values a shared rank, so two
+  names with identical flow premium score identically regardless of list position.
+- **Intraday-capable.** The scanner can run at any time of day, not just after close.
+  `breakout_trigger` checks the prior complete bar's volume when called mid-session so a
+  partial bar's low volume doesn't hide a breakout that already happened — which would
+  otherwise leak an extended name into the results.
 
 ---
 
@@ -39,7 +51,8 @@ Design tenets:
 flowchart TB
     subgraph App["App-aware layer (NOT portable)"]
         API["api/v1/breakout_scanner.py<br/>admin endpoints"]
-        CLI["scripts/run_breakout_scan.py<br/>cron entrypoint"]
+        SCHED["scheduler.py<br/>in-process auto-scan loop"]
+        CLI["scripts/run_breakout_scan.py<br/>external cron entrypoint"]
         INT["integration.py<br/>DB + Momentum Stocks glue"]
         UI["BreakoutScannerCard.tsx<br/>admin UI"]
         DB[("SQLite / Postgres<br/>settings + results + TradeIdea")]
@@ -93,19 +106,22 @@ the app. `integration.py` is the single bridge between the app and the core.
 
 ```mermaid
 flowchart TD
-    A["Normalize universe<br/>(upper, dedupe)"] --> B{"UW enabled<br/>& available?"}
-    B -- yes --> C["Stage 0: bulk UW stock-screener<br/>1 call → IV rank, net premium,<br/>P/C, earnings, OI change"]
+    A["Determine universe<br/>curated list OR auto (UW screener top-N<br/>by options volume, merged + deduped)"] --> B{"UW enabled<br/>& available?"}
+    B -- yes --> C["Stage 0: bulk UW stock-screener<br/>1 call → IV rank, net premium,<br/>P/C, earnings, OI change, sector"]
     B -- no --> D
-    C --> D["Fetch SPY history once<br/>(for relative strength)"]
-    D --> E["Stage 1: per ticker<br/>fetch daily OHLC →<br/>compute_structure_signals()"]
-    E --> F{"Pre-filter:<br/>price band, min avg vol,<br/>dollar-volume, ADR%,<br/>optional >200DMA, ≥40 bars"}
-    F -- fail --> X["drop"]
+    C --> D["Fetch SPY history + 11 sector ETFs once<br/>(for relative strength)"]
+    D --> E["Stage 1: per ticker<br/>fetch daily OHLC →<br/>compute_structure_signals(sector_closes)"]
+    E --> E2{"Already broken out?<br/>(breakout_trigger)"}
+    E2 -- yes --> X["drop"]
+    E2 -- no --> F{"Pre-filter:<br/>price band, min avg vol,<br/>dollar-volume, ADR%,<br/>optional >200DMA, ≥40 bars"}
+    F -- fail --> X
     F -- pass --> G["build feature dict<br/>+ preliminary structure score"]
     G --> H{"UW active?"}
-    H -- yes --> I["Stage 2: sort by prelim score,<br/>take top deep_dive_n →<br/>per-ticker UW deep calls"]
+    H -- yes --> I["Stage 2: take top deep_dive_n<br/>by preliminary score"]
     H -- no --> J
-    I --> M["Market context: SPY/QQQ trend,<br/>breadth, VIX, UW tide + SPIKE<br/>→ regime + regime_scale"]
-    J --> M
+    I --> I2["per-ticker UW deep calls (multi-day flow,<br/>GEX by strike, max-pain, dark pool,<br/>insider, congress, seasonality ≈ 8 calls)"]
+    I2 --> M
+    J --> M["Market context: SPY/QQQ trend,<br/>breadth, VIX, UW tide + SPIKE<br/>→ regime + regime_scale"]
     M --> K["Stage 3: score_candidates(regime_scale)<br/>cross-sectional composite over the<br/>deep-dived set when UW active"]
     K --> L["sort by score, take top_n →<br/>ScanCandidate list (+ CSP context)"]
 ```
@@ -116,13 +132,20 @@ dark pool, insider, congress, seasonality ≈ 8 calls each), so it only runs for
 strongest `deep_dive_n` structures — this bounds API cost and rate-limit exposure.
 
 **Deep-dive-aware ranking.** When UW is active, only the deep-dived survivors (which have
-full smart-money data) are ranked against each other in Stage 3, so a structurally-zeroed
-name can never outrank one with real flow/GEX/dark-pool data.
+full smart-money data) are ranked against each other in Stage 3, so a name missing
+flow/GEX/dark-pool data can never outrank one that has it.
+
+**Universe modes.**
+- **Curated**: admin-maintained list of tickers only.
+- **Auto**: fetches the UW stock screener without a ticker filter (top stocks by options
+  volume), merges with any curated tickers, and deduplicates. Returns liquid, optionable
+  US stocks — exactly the names with UW data coverage. Configured via
+  `ScannerConfig.universe_mode` and `auto_universe_size`.
 
 ### 3.2 Price-structure signals (`signals.py`)
 
 All pure NumPy; each returns 0..1 unless noted. Computed in
-`compute_structure_signals(ohlc, spy_closes)` (requires ≥ 40 bars).
+`compute_structure_signals(ohlc, spy_closes, sector_closes)` (requires ≥ 40 bars).
 
 | Signal | Function | Idea | Output |
 |--------|----------|------|--------|
@@ -130,25 +153,33 @@ All pure NumPy; each returns 0..1 unless noted. Computed in
 | Range tightness | `nr_tightness` | Avg range of last 7 bars vs prior 30 (NR7 / inside-bar family). | `clip(1.2 − recent/prior)` |
 | VCP contraction | `vcp_contraction` | 4 segments × 10 bars; reward monotonically shrinking ranges + tightness of most-recent vs oldest. | 0..1 |
 | Volume dry-up | `volume_dryup` | 5-day vs 20-day avg volume; sellers exhausted into the base. | `clip(1.2 − vol5/vol20)` |
-| **Volume expansion** | `volume_expansion` | Last-day volume vs 50-day avg — breakout *confirmation* (the opposite of dry-up). | `ratio` + 0..1 score (2× → 1.0) |
-| **Breakout trigger** | `breakout_trigger` | Close above pivot on ≥1.5× volume and not over-extended (≤10% above). Separates "go" from "watch". | bool |
+| **Volume expansion** | `volume_expansion` | Last-day volume vs 50-day avg. Context only — it feeds `breakout_trigger` and is surfaced in the UI, but is **not** a scored factor (it is a post-breakout signal). | `ratio` + 0..1 score (2× → 1.0) |
+| **Breakout trigger** | `breakout_trigger` | Close above pivot on ≥1.5× volume and not over-extended (≤10% above). **Intraday-safe**: also checks the prior complete bar's volume (`vol_ratio_confirmed`) so a mid-session partial bar doesn't suppress a real move. Used purely as the **Stage-1 exclusion filter**. | bool |
+| **Base duration** | `base_duration` | How many bars the current consolidation has held inside its band. Institutions cannot accumulate in three days; 10 bars → 0.0, 35+ bars (~7 weeks) → 1.0. | `bars` + 0..1 score |
+| **Up/down volume** | `up_down_volume_ratio` | O'Neil accumulation proxy: volume on up days vs down days over 50 bars. Distinguishes quiet accumulation from quiet distribution, which `volume_dryup` cannot. | `ratio` + 0..1 score (2× → 1.0) |
+| **Tight closes** | `tight_closes` | Minervini "tight closes": spread of the last 5 closes relative to their mean. A cluster inside ~2% means supply is exhausted. | `spread` % + 0..1 score |
+| **Bull flag** | `flag_pattern` | Pole (≥12% advance over 20 bars) + tight flag (≤15% pullback, ≤12% range over 10 bars). Scored by advance size (35%), flag tightness (45%), and volume dry-up during flag (20%). | `flag` bool + `score` 0..1 |
 | Relative strength | `relative_strength` | Outperformance vs SPY over 20/40/60d + "rising" bonus; falls back to own momentum if no SPY. | **raw** (can be < 0) |
+| **Sector RS** | `relative_strength` (vs sector ETF) | Outperformance vs the stock's own sector ETF (XLK, XLV, XLF, etc.) over the same window. Fetched once per run for all 11 GICS sectors. Missing sector data → `None` → neutral 0.5 percentile (no penalty). | **raw** |
 | **RS-line new high** | `rs_line_new_high` | Is the stock/SPY ratio line at a new high (leading price)? | bool |
 | **52-week-high proximity** | `fifty_two_week` | Best breakouts emerge near new highs. Proximity peaks within ~15% of the 52wk high. | `near_high` 0..1 + `pct_from_high` |
+| **Prior uptrend** | *(inline in `compute_structure_signals`)* | Stock is ≥25% above its 52-week low = Minervini Stage 2 prerequisite. Confirms the trend is established before we bet on a continuation. | bool + `pct_from_52wk_low` |
 | **Base quality** | `base_quality` | Shallow base depth + price in the upper portion of the base (accumulation). | 0..1 |
-| Pivot proximity | `detect_pivot` + `pivot_proximity` | Pivot = max high over last 40 bars (excl. last 2). Reward price coiling 0–4% *under* pivot; penalize already-extended (> 2% above). | 0..1 |
+| Pivot proximity | `detect_pivot` + `pivot_proximity` | **Multi-touch pivot**: scans for local swing highs where two highs are within 1.5% of each other (double-top resistance becomes breakout pivot); falls back to rolling 40-bar max when no multi-touch pair is found. Proximity is an **asymmetric Gaussian in ATR units** peaking 0.25 ATR under the pivot, decaying gently below (width 3.0 ATR) and steeply above (width 1.2 ATR). Continuous everywhere, so a name drifting across its pivot never jumps in rank. | 0..1 |
 | ATR(14) | `atr` | Used for the suggested CSP strike (~1.5 ATR below price). | raw |
 | **ADR%** | `adr_pct` | Average daily range as % of price — tradability/liquidity gate. | raw % |
 | **Realized vol** | `realized_vol` | Annualized 20-day realized vol; paired with IV for the IV-vs-realized factor. | raw % |
-| Setup label | `classify_setup` | Human tag: `confirmed_breakout`, `squeeze_breakout_setup`, `volatility_squeeze`, `vcp_base`, `flat_base`, `ascending_base`, `consolidation`. | string |
+| Setup label | `classify_setup` | Human tag in priority order: `bull_flag`, `tight_at_pivot`, `squeeze_breakout_setup`, `volatility_squeeze`, `vcp_base`, `flat_base`, `ascending_base`, `consolidation`. | string |
 
 ### 3.3 Unusual Whales smart-money signals (`uw_signals.py`)
 
 Defensive normalizers (UW returns many numbers as strings; missing → neutral; never raise).
+All per-ticker UW factors initialize to `None` (not `0.0`) so a missing data point maps to
+neutral 0.5 in percentile ranking rather than dead-last.
 
 | Factor | Function | Source endpoint | Output |
 |--------|----------|-----------------|--------|
-| Flow bullishness (multi-day) | `flow_from_ticks` → fallback `flow_bullishness` | `/stock/{t}/net-prem-ticks` (fallback `/stock/{t}/flow-alerts`) | **raw** cumulative net call − net put premium; more robust than a single snapshot |
+| Flow bullishness (multi-day) | `flow_from_ticks` → fallback `flow_bullishness` | `/stock/{t}/net-prem-ticks` (fallback `/stock/{t}/flow-alerts`) | **raw** cumulative net call − net put premium; bid-side puts (selling puts = bullish) are *added* to the score, not subtracted |
 | OI accumulation (real) | `oi_accumulation_from_contracts` → fallback `oi_accumulation` | `/stock/{t}/option-contracts` (fallback bulk screener row) | **raw** aggregated call-OI % growth across contracts; fixes the screener `→ 0` degradation |
 | Dealer GEX (graded) + gamma wall | `gex_profile` → fallback `gex_regime` | `/stock/{t}/greek-exposure/strike` (fallback `/greek-exposure`) | continuous `score` (short-gamma → high), `regime`, nearest overhead `gamma_wall` strike + `wall_pressure` |
 | Max pain | `max_pain_context` | `/stock/{t}/max-pain` | `max_pain` price + distance vs spot (context) |
@@ -186,27 +217,34 @@ candidate's final score (capped ≤ 0.80 in risk-off).
 
 **Step 1 — normalize.** Raw, unbounded factors are **percentile-ranked across the
 ranked set** (`percentile_rank`, **missing → neutral 0.5**, not 0.0) so names merely
-lacking a data point aren't pushed to the bottom: `rs_raw`, `flow_bullishness`,
-`oi_accum`, `darkpool_premium`, `smart_money_score`. Already-0..1 structure signals are
-used directly.
+lacking a data point aren't pushed to the bottom: `rs_raw`, `sector_rs_raw`,
+`flow_bullishness`, `oi_accum`, `darkpool_premium`, `smart_money_score`.
+**Tied values share the average of the ranks they span**, so ranking never depends on
+input order. Already-0..1 structure signals are used directly.
 
 **Step 2 — seven factor groups (each clamped to 0..1):**
 
 ```mermaid
 flowchart LR
     subgraph G["Factor groups → weights"]
-      A["compression_vcp = 0.35·compression + 0.25·vcp<br/>+ 0.12·nr + 0.12·volume_dryup<br/>+ 0.16·base_quality + 0.08·squeeze"] -->|0.20| S(("Σ base"))
+      A["compression_vcp = 0.35·compression + 0.25·vcp<br/>+ 0.12·nr + 0.12·volume_dryup<br/>+ 0.16·base_quality + 0.08·squeeze<br/>+ flag_bonus (≤0.10·flag_score if bull_flag)"] -->|0.20| S(("Σ base"))
       B["flow_oi = 0.6·flow_pct + 0.4·oi_pct"] -->|0.20| S
-      C["leadership = 0.6·rs_pct + 0.4·near_52wk_high<br/>+ 0.05·rs_new_high"] -->|0.15| S
-      H["confirmation = 0.6·volume_expansion<br/>+ 0.4·breakout_trigger"] -->|0.15| S
+      C["leadership = 0.40·rs_pct + 0.20·sector_rs_pct<br/>+ 0.40·near_52wk_high<br/>+ 0.05·rs_new_high + 0.08·prior_uptrend"] -->|0.16| S
+      H["base_construction = 0.40·base_duration<br/>+ 0.35·up_down_volume + 0.25·tight_closes"] -->|0.10| S
       D["darkpool_smart = 0.5·dp_pct + 0.5·sm_pct<br/>+ 0.1·darkpool_accum + 0.1·smart_money"] -->|0.12| S
-      E["gex = gex_score (graded 0..1)"] -->|0.08| S
-      F["pivot = pivot_proximity"] -->|0.10| S
+      E["gex = gex_score (graded 0..1, NEUTRAL if missing)"] -->|0.08| S
+      F["pivot = pivot_proximity (ATR-normalized)"] -->|0.14| S
     end
     S --> P["− penalties"]
     P --> RS["× regime_scale"]
     RS --> R["clamp(0,1) × 100<br/>= Breakout Readiness Score"]
 ```
+
+Key formula notes:
+- **`flag_bonus`**: `0.10 × flag_score` added to `compression_vcp` when `flag_pattern=True`; quality-scaled so a tight, high-quality flag earns more than a loose one.
+- **`leadership`**: split 40% SPY RS + 20% sector RS + 40% near 52wk-high. `prior_uptrend` (+0.08) confirms the stock is ≥25% above its 52-week low (Minervini Stage 2 prerequisite).
+- **`base_construction`**: the "has this base actually been built?" group — duration, accumulation, and tightness are each things a shallow multi-day pause cannot fake.
+- **`gex`**: the only non-percentile-ranked UW group, so it maps `None → NEUTRAL` directly.
 
 **Step 3 — penalties (subtracted from the 0..1 base):**
 
@@ -226,14 +264,22 @@ plus a `factor_breakdown` dict with each group value, the penalty, and `regime_s
 
 ### 3.6 Preliminary score (deep-dive gate)
 
-Structure-only, cheap, used **only** to choose which survivors get Stage-2 UW calls — now
-nudged by confirmation + 52wk-high so released leaders preferentially earn the expensive calls:
+Structure-only, cheap, used **only** to rank survivors for Stage-2 UW calls. Every term is
+a leading signal — confirmed breakouts never reach this point, so rewarding volume
+expansion or a fired trigger here would spend the expensive UW budget on the wrong names:
 
 ```
-prelim = 0.30·compression + 0.20·vcp + 0.12·nr_tightness
-       + 0.08·volume_dryup + 0.10·pivot + 0.10·near_52wk_high
-       + 0.10·volume_expansion + (0.10 if breakout_trigger) + (0.08 if squeeze)
+prelim = 0.22·compression + 0.16·vcp + 0.10·nr_tightness
+       + 0.08·volume_dryup + 0.18·pivot + 0.10·near_52wk_high
+       + 0.06·base_duration + 0.06·up_down_volume + 0.04·tight_closes
+       + (0.08 if squeeze) + (0.06 if flag_pattern)
 ```
+
+Pivot proximity carries the largest single term because, among coiling names, distance to
+the pivot is the best cheap predictor of which setup resolves first.
+
+**Allocation:** the top `max(deep_dive_n, top_n)` survivors by prelim score get the
+per-ticker UW calls.
 
 ---
 
@@ -242,6 +288,8 @@ prelim = 0.30·compression + 0.20·vcp + 0.12·nr_tightness
 ```mermaid
 classDiagram
     class ScannerConfig {
+        +str universe_mode = "curated"
+        +int auto_universe_size = 300
         +int top_n = 15
         +int deep_dive_n = 40
         +Dict weights
@@ -256,6 +304,7 @@ classDiagram
         +bool use_unusual_whales = True
         +normalized_weights() Dict
     }
+    note for ScannerConfig "Pre-breakout filtering is unconditional -\nthere is no toggle for it."
     class ScanResult {
         +List~ScanCandidate~ candidates
         +datetime run_at
@@ -274,7 +323,7 @@ classDiagram
         +str setup_type
         +float pivot_price
         +float current_price
-        +bool breakout_trigger
+        +float pct_to_pivot
         +float volume_expansion
         +float pct_from_52wk_high
         +float iv_rank
@@ -296,7 +345,12 @@ classDiagram
 ```
 
 `DEFAULT_WEIGHTS` (auto-renormalized): `flow_oi 0.20`, `compression_vcp 0.20`,
-`leadership 0.15`, `confirmation 0.15`, `darkpool_smart 0.12`, `gex 0.08`, `pivot 0.10`.
+`leadership 0.16`, `pivot 0.14`, `darkpool_smart 0.12`, `base_construction 0.10`,
+`gex 0.08`.
+
+The admin API also returns `effective_weights` — defaults merged with any DB override and
+renormalized to 1.0 — so the UI can render true per-factor contributions without
+duplicating these constants in TypeScript.
 
 ---
 
@@ -312,6 +366,7 @@ class PriceProvider(Protocol):
 class SmartMoneyProvider(Protocol):
     def is_available(self) -> bool: ...
     def stock_screener(self, tickers: list[str]) -> dict[str, dict]: ...
+    def stock_screener_universe(self, max_symbols: int, min_price: float | None) -> list[str]: ...
     def flow_alerts(self, ticker: str) -> list[dict]: ...
     def greek_exposure(self, ticker: str) -> dict: ...
     def darkpool(self, ticker: str) -> list[dict]: ...
@@ -337,8 +392,8 @@ class SmartMoneyProvider(Protocol):
   handling** (honors `Retry-After`, else exponential backoff capped at 30s), optional
   **`min_interval`** request spacing, and graceful `None`/`[]` on any failure. The newer
   methods (`greek_exposure_by_strike`, `max_pain`, `net_prem_ticks`, `option_contracts`,
-  `market_tide`, `spike`, `economic_calendar`) are called defensively via `getattr` so any
-  provider missing them still works.
+  `market_tide`, `spike`, `economic_calendar`, `stock_screener_universe`) are called
+  defensively via `getattr` so any provider missing them still works.
 
 > **`run_scan` signature:** `run_scan(tickers, config, price_provider, uw_provider,
 > index_provider=None, logger=None)`. `index_provider` (Yahoo in this app) supplies
@@ -361,6 +416,7 @@ sequenceDiagram
     API-->>UI: 202 (background task)
     API->>INT: run_and_publish() (own DB session)
     INT->>DB: ensure_schema() + load settings + universe
+    INT->>INT: if auto mode: fetch UW screener universe,<br/>merge + dedupe with curated list
     INT->>CORE: run_scan(tickers, config, price+uw+index providers)
     CORE-->>INT: ScanResult (ranked + market_context)
     INT->>DB: replace breakout_scan_results
@@ -372,6 +428,13 @@ sequenceDiagram
 
 Key behaviors:
 
+- **Enabled gate:** `run_and_publish` refuses to run when `BreakoutScannerSettings.enabled`
+  is false, and `POST /run` rejects the request up front so the UI reports it immediately
+  instead of queueing a job that will fail.
+- **Universe selection:** determined before the scan starts. In auto mode, the UW screener
+  is queried without a ticker filter (returns top stocks by options volume); results are
+  merged with any curated tickers and deduped. An empty final universe aborts early before
+  setting status to "running".
 - **Provider selection:** Alpaca daily bars when `ALPACA_API_KEY`/`ALPACA_SECRET_KEY` are
   set (Yahoo otherwise); a Yahoo `index_provider` is always passed for SPY/QQQ/^VIX.
 - **Schema self-healing (`ensure_schema`):** the app uses `create_all` (no Alembic), so
@@ -386,8 +449,76 @@ Key behaviors:
 - **Status machine:** `idle → running → success | error`. A run stuck in `running` past
   `STALE_RUNNING_MINUTES` (15) is auto-reset on the next status read or run
   (`reset_if_stale`); `reset_status` is the manual override.
-- The scan runs as a **background task** (web) or to completion in the **CLI** (cron) — it
-  is independent of the browser.
+- The scan runs as a **background task** (web), on the **built-in schedule**
+  (`scheduler.py`, see §6.1), or to completion in the **CLI** (external cron) — it is
+  independent of the browser and can be triggered at any time of day.
+
+---
+
+## 6.1 Automatic scan scheduler (`scheduler.py`)
+
+An asyncio loop started from the FastAPI `lifespan` fires the scan on an
+admin-configurable wall-clock schedule. There is no job queue or scheduler library in
+this app and it deploys as a single uvicorn process, so a loop is the whole mechanism.
+The schedule lives in the same singleton settings row as the rest of the scanner config,
+so it is editable from the admin UI with no redeploy.
+
+**Manual runs are unaffected.** `POST /run` works whether or not the schedule is on.
+
+```mermaid
+flowchart TB
+    L["lifespan startup"] --> S["AutoScanScheduler.start()"]
+    S --> T["tick every 30m"]
+    T --> D{"is_due?<br/>selected weekday · past HH:MM ·<br/>inside catch-up · not yet run today"}
+    D -->|no| T
+    D -->|yes| R{"scan already running?"}
+    R -->|yes| T
+    R -->|no| C{"claim_day()<br/>conditional UPDATE"}
+    C -->|lost| T
+    C -->|won| X["to_thread(run_and_publish)"]
+    X --> T
+```
+
+| Setting | Column | Default | Meaning |
+|---|---|---|---|
+| Auto scan | `auto_scan_enabled` | `false` | Opt-in master switch for the schedule |
+| Time | `auto_scan_time` | `"16:30"` | Local `HH:MM` wall clock |
+| Timezone | `auto_scan_timezone` | `"America/New_York"` | IANA zone name |
+| Days | `auto_scan_days` | `"0,1,2,3,4"` | CSV of Python `weekday()` numbers (Mon=0) |
+| — | `last_auto_run_date` | `null` | `YYYY-MM-DD` in the configured zone; the claim key |
+| — | `last_auto_run_at` | `null` | UTC timestamp of the last automatic trigger |
+
+Key behaviors:
+
+- **Default is 30 minutes after the close.** 16:30 America/New_York is late enough for the
+  daily bar to settle, which matters because nearly every signal reads `closes[-1]` as a
+  completed close and `volume_dryup` is biased upward by a partial bar.
+- **Wall-clock, not interval.** Storing `HH:MM` + IANA zone keeps the slot at 16:30 local
+  across DST rather than drifting by an hour twice a year.
+- **Opt-in.** `auto_scan_enabled` defaults to `false` so upgrading an existing deployment
+  never silently starts spending API quota. `ensure_schema` backfills the new columns on
+  the existing row so an upgraded DB behaves identically to a fresh one.
+- **Exactly once per day.** `claim_day` writes `last_auto_run_date` with a conditional
+  `UPDATE ... WHERE last_auto_run_date <> :day` and only proceeds when it matched a row.
+  A slow tick, a restart, or a second worker process therefore cannot double-fire.
+- **Catch-up window.** A slot missed because the process was down still runs when the
+  process returns, but only within `CATCHUP_WINDOW` (4h). Past that the day is skipped
+  rather than producing a surprise scan at midnight.
+- **Manual runs win.** A tick that finds `last_run_status == "running"` defers without
+  claiming the slot, so it retries on the next tick instead of burning the day.
+- **The event loop is never blocked.** `run_and_publish` is synchronous and takes minutes,
+  so it is dispatched via `asyncio.to_thread`; the API keeps serving during a scan.
+- **Both switches must be on.** `enabled` (master) gates the schedule as well as manual
+  runs; the UI warns when the schedule is on but the scanner is disabled.
+- **Editing the schedule re-arms today** only when the new time has not yet passed
+  (`_rearm_if_slot_still_ahead`). Moving 16:30 → 20:00 at 17:00 runs tonight; moving
+  16:30 → 16:45 after both passed does not trigger a duplicate catch-up scan.
+- **`next_auto_run_at` is resolved server-side** and returned by `GET /` so the admin UI
+  shows a countdown without reimplementing the weekday/catch-up/already-ran logic.
+- **Market holidays are not skipped** — there is no market calendar in this app. A holiday
+  scan is harmless: the last daily bar is unchanged, so it reproduces the prior ranking.
+- **The external cron path still works** and is now redundant. Use one or the other; both
+  enabled is safe (the status check and claim prevent overlap) but pointless.
 
 ---
 
@@ -428,6 +559,18 @@ for c in result.candidates:
     print(c.rank, c.symbol, c.score, c.setup_type, c.iv_rank)
 ```
 
+Auto-universe mode (no curated list needed):
+
+```python
+config = ScannerConfig(
+    universe_mode="auto",
+    auto_universe_size=300,
+    top_n=15,
+    use_unusual_whales=True,
+)
+# pass an empty tickers list; integration.py builds the universe from UW
+```
+
 Requirements: `numpy`, plus `yfinance` (default price provider) and `httpx` (UW provider).
 To integrate persistence in your own app, write a thin equivalent of `integration.py`
 against your storage.
@@ -459,11 +602,12 @@ Implement `PriceProvider` or `SmartMoneyProvider` and pass it to `run_scan`. No 
 changes needed.
 
 ### Change weighting / thresholds
-Adjust `ScannerConfig` (or the DB `BreakoutScannerSettings.weights` JSON). Weights are
-auto-renormalized, so partial overrides are safe.
+Adjust `ScannerConfig` (or the DB `BreakoutScannerSettings.weights` JSON, editable from
+the admin UI's **Factor weights** panel). Weights are auto-renormalized, so partial
+overrides are safe.
 
 ### Checklist when adding a factor that should persist/display
-- [ ] `signals.py` / `uw_signals.py` — compute it
+- [ ] `signals.py` / `uw_signals.py` — compute it (return `None`, never `0.0`, on missing)
 - [ ] `scanner.py` — add to `feat` (and Stage-2 call if UW)
 - [ ] `scoring.py` — group + weight (+ `DEFAULT_WEIGHTS`)
 - [ ] `types.ScanCandidate` — new field (+ `to_dict`)
@@ -471,6 +615,15 @@ auto-renormalized, so partial overrides are safe.
 - [ ] `integration._RESULT_COLUMNS` / `_SETTINGS_COLUMNS` — add the column for
       `ensure_schema()` so existing DBs get the `ALTER TABLE` (no Alembic in this app)
 - [ ] frontend `types` + `BreakoutScannerCard` table/badges
+- [ ] `FACTOR_GROUPS` in `BreakoutScannerCard.tsx` if it is a new scoring group, so it
+      appears in the breakdown panel and the weights editor
+- [ ] `tests/test_breakout_scanner.py` — a directional test with synthetic data
+
+### Removing a DB column
+There is no Alembic. Columns added by `ensure_schema()` arrive via `ALTER TABLE` and are
+nullable, so dropping them from the model is safe. A column created by the original
+`create_all` may be `NOT NULL`; verify with `PRAGMA table_info` before removing it from the
+model, or inserts that omit it will fail on existing databases.
 
 ---
 
@@ -486,14 +639,27 @@ auto-renormalized, so partial overrides are safe.
 - **Market context / VIX:** `^VIX` is only fetched from the Yahoo `index_provider`; on a
   Yahoo-less setup VIX (and its fear/greed contribution) is simply omitted, and the regime
   is computed from the remaining inputs. UW SPIKE/market-tide require a UW key.
+- **Sector RS** requires UW data for sector metadata (the screener returns a `sector` field
+  per ticker). In curated-only mode without UW, `sector_rs_raw` is `None` → neutral 0.5
+  percentile so stocks are not penalized for missing sector data.
+- **Intraday partial bar:** volume for the current incomplete bar is excluded from
+  breakout-trigger decisions; the scanner instead uses `vol_ratio_confirmed` (prior
+  complete bar vs the 50-bar avg excluding today). Since the trigger is now the exclusion
+  filter, a false positive here silently drops a valid candidate rather than merely
+  mis-scoring it.
 - **Seasonality** is a deliberately small penalty-only signal.
 - **Rate limits:** Stage-2 is the cost driver (~8 calls × `deep_dive_n`). Tune
   `deep_dive_n` and `UnusualWhalesProvider(min_interval=...)` to your UW plan.
 - **History requirement:** tickers with < 40 daily bars are skipped; 52-week-high and
-  realized-vol signals are most meaningful with ≥ ~252 bars.
+  realized-vol signals are most meaningful with ≥ ~252 bars. Bull flag requires ≥ 31 bars
+  (20-bar pole + 10-bar flag) to evaluate.
 - **CSP strike** is a heuristic (~1.5 ATR below price), not an options-chain optimization.
-- **No backtest/validation harness yet** — scores aren't yet measured against realized
-  forward returns; weights are expert priors, not fit.
+- **Base-duration band** is anchored on the last 10 bars, so a base that widens gradually
+  can read as shorter than a chart-reader would call it.
+- **No backtest/validation harness** — scores aren't measured against realized forward
+  returns; weights are expert priors, not fit. The `factor_breakdown` panel in the admin
+  UI is the only feedback loop today, and it is qualitative.
+
 ```mermaid
 flowchart LR
     L1["Cost ∝ deep_dive_n × ~8 UW calls"] --> L2["tune deep_dive_n + min_interval"]

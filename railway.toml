@@ -11,17 +11,21 @@ restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 # =============================================================================
-# Breakout Scanner - scheduled scan (optional)
+# Breakout Scanner - scheduled scan
 # =============================================================================
-# This file configures the long-running web service. Railway runs a cron job as a
-# SEPARATE service (a service can be either a web service OR a cron job, not both),
-# so the schedule below cannot live in this same [deploy] block.
+# NO CRON SERVICE IS NEEDED. The web service schedules the daily Momentum Stocks
+# refresh itself: Admin -> Breakout Scanner -> Automatic scan (defaults to 16:30
+# America/New_York, Mon-Fri). The schedule is stored in the database and is
+# editable from the UI, so changing it needs no redeploy.
 #
-# To enable the daily Momentum Stocks refresh, create a second service from this
-# same repo/image and set, in that service's settings:
+# The external cron path below is still supported as an alternative for hosts
+# that prefer one. Railway runs a cron job as a SEPARATE service (a service is
+# either a web service OR a cron job, not both), so it cannot live in this same
+# [deploy] block. Create a second service from this same repo/image and set:
 #
 #   Start command:  python -m scripts.run_breakout_scan
 #   Cron schedule:  30 21 * * 1-5   (UTC; ~4:30pm ET on US trading days)
 #
 # Give it the same variables as the web service (DATABASE_URL,
-# UNUSUAL_WHALES_API_KEY, etc.). See MIGRATION.md -> "Breakout Scanner".
+# UNUSUAL_WHALES_API_KEY, etc.). Use one mechanism or the other, not both.
+# See MIGRATION.md -> "Breakout Scanner".

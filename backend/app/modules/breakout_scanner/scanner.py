@@ -4,7 +4,9 @@ Breakout Scanner - orchestrator.
 Pipeline:
   1. Bulk Unusual Whales stock-screener over the whole universe (IV rank, net
      premium, P/C, earnings) - one cheap pass.
-  2. Per-ticker daily OHLC -> price-structure leading signals + Stage-1 filter.
+  2. Per-ticker daily OHLC -> price-structure leading signals, then Stage-1
+     filtering. Names that have *already* broken out are dropped here: this is a
+     pre-breakout scanner, so a confirmed breakout is out of scope entirely.
   3. Rank survivors by a cheap preliminary structure score; the top
      ``deep_dive_n`` get the expensive per-ticker UW calls (flow, GEX, dark pool,
      insider, congress, seasonality).
@@ -23,23 +25,51 @@ from .scoring import score_candidates
 from .types import ScanCandidate, ScanResult, ScannerConfig
 
 
+_SECTOR_ETFS: Dict[str, str] = {
+    "Technology": "XLK",
+    "Consumer Cyclical": "XLY",
+    "Consumer Defensive": "XLP",
+    "Healthcare": "XLV",
+    "Financial Services": "XLF",
+    "Financials": "XLF",
+    "Communication Services": "XLC",
+    "Industrials": "XLI",
+    "Energy": "XLE",
+    "Utilities": "XLU",
+    "Real Estate": "XLRE",
+    "Basic Materials": "XLB",
+}
+
+
 def _preliminary_score(sig: Dict[str, Any]) -> float:
     """Cheap structure-only score to pick deep-dive survivors.
 
-    Now nudged by breakout confirmation and 52wk-high proximity so released
-    leaders preferentially earn the expensive Stage-2 UW calls.
+    Every term is a *leading* signal: confirmed breakouts never reach this
+    point (Stage 1 excludes them), so rewarding volume expansion or a fired
+    trigger here would only spend the expensive UW budget on the wrong names.
+    Pivot proximity and base construction lead because they best predict which
+    coiling setups are closest to resolving.
     """
     return (
-        0.30 * float(sig.get("compression") or 0)
-        + 0.20 * float(sig.get("vcp") or 0)
-        + 0.12 * float(sig.get("nr_tightness") or 0)
+        0.22 * float(sig.get("compression") or 0)
+        + 0.16 * float(sig.get("vcp") or 0)
+        + 0.10 * float(sig.get("nr_tightness") or 0)
         + 0.08 * float(sig.get("volume_dryup") or 0)
-        + 0.10 * float(sig.get("pivot") or 0)
+        + 0.18 * float(sig.get("pivot") or 0)
         + 0.10 * float(sig.get("near_52wk_high") or 0)
-        + 0.10 * float(sig.get("volume_expansion") or 0)
-        + (0.10 if sig.get("breakout_trigger") else 0)
+        + 0.06 * float(sig.get("base_duration") or 0)
+        + 0.06 * float(sig.get("up_down_volume") or 0)
+        + 0.04 * float(sig.get("tight_closes") or 0)
         + (0.08 if sig.get("squeeze") else 0)
+        + (0.06 if sig.get("flag_pattern") else 0)
     )
+
+
+def _pct_to_pivot(current_price: Optional[float], pivot: Optional[float]) -> Optional[float]:
+    """Percent the stock still has to travel to reach its pivot (negative if above)."""
+    if not current_price or current_price <= 0 or not pivot or pivot <= 0:
+        return None
+    return (pivot - current_price) / current_price * 100.0
 
 
 def _suggested_put_strike(current_price: Optional[float], atr: Optional[float]) -> Optional[float]:
@@ -111,6 +141,16 @@ def run_scan(
     except Exception as e:
         log.warning(f"Could not fetch SPY history: {e}")
 
+    # --- Sector ETF closes for sector-relative RS (best-effort; 11 tickers, one fetch each) ---
+    _sector_etf_closes: Dict[str, np.ndarray] = {}
+    for etf_sym in set(_SECTOR_ETFS.values()):
+        try:
+            hist = price_provider.get_price_history(etf_sym, days=config.history_days)
+            if hist:
+                _sector_etf_closes[etf_sym] = np.array([p["close"] for p in hist], dtype=float)
+        except Exception as e:
+            log.debug(f"Sector ETF {etf_sym} fetch failed: {e}")
+
     # --- Stage 1: per-ticker structure + pre-filter ---
     features: List[Dict[str, Any]] = []
     for sym in universe:
@@ -119,8 +159,18 @@ def run_scan(
         except Exception as e:
             log.warning(f"Price history failed for {sym}: {e}")
             continue
-        sig = S.compute_structure_signals(ohlc, spy_closes=spy_closes)
+        # Resolve sector ETF closes (from UW screener sector field when available)
+        ticker_sector = screener_map.get(sym, {}).get("sector") if uw_active else None
+        etf_sym = _SECTOR_ETFS.get(ticker_sector) if ticker_sector else None
+        sector_closes = _sector_etf_closes.get(etf_sym) if etf_sym else None
+
+        sig = S.compute_structure_signals(ohlc, spy_closes=spy_closes, sector_closes=sector_closes)
         if not sig:
+            continue
+
+        # Drop names that have already broken out so the results answer
+        # "what is about to break out?" not "what just broke out?".
+        if sig.get("breakout_trigger"):
             continue
 
         price = sig.get("current_price")
@@ -152,13 +202,17 @@ def run_scan(
             "rs_raw": sig.get("rs_raw"),
             "rs_new_high": sig.get("rs_new_high"),
             "pivot": sig.get("pivot"),
-            # breakout confirmation + leadership
+            # volume context + leadership
             "volume_expansion": sig.get("volume_expansion"),
             "vol_ratio": sig.get("vol_ratio"),
-            "breakout_trigger": sig.get("breakout_trigger"),
             "near_52wk_high": sig.get("near_52wk_high"),
             "pct_from_52wk_high": sig.get("pct_from_52wk_high"),
             "base_quality": sig.get("base_quality"),
+            # base construction
+            "base_duration": sig.get("base_duration"),
+            "base_duration_bars": sig.get("base_duration_bars"),
+            "up_down_volume": sig.get("up_down_volume"),
+            "tight_closes": sig.get("tight_closes"),
             # context
             "current_price": price,
             "pivot_price": sig.get("pivot_price"),
@@ -167,6 +221,12 @@ def run_scan(
             "realized_vol": sig.get("realized_vol"),
             "above_sma50": sig.get("above_sma50"),
             "setup_type": sig.get("setup_type"),
+            # continuation pattern
+            "flag_pattern": sig.get("flag_pattern"),
+            "flag_score": sig.get("flag_score"),
+            # sector-relative RS
+            "sector_rs_raw": sig.get("sector_rs_raw"),
+            "sector": ticker_sector,
             # UW screener-derived
             "iv_rank": metrics.get("iv_rank"),
             "implied_move": metrics.get("implied_move"),
@@ -175,19 +235,23 @@ def run_scan(
             "net_put_premium": metrics.get("net_put_premium"),
             "bullish_premium": metrics.get("bullish_premium"),
             "bearish_premium": metrics.get("bearish_premium"),
-            "oi_accum": UW.oi_accumulation(metrics) if metrics else 0.0,
+            "oi_accum": UW.oi_accumulation(metrics) if metrics else None,
             "next_earnings_date": metrics.get("next_earnings_date"),
-            # UW deep factors (filled for survivors)
-            "flow_bullishness": 0.0,
-            "gex_score": 0.0,
+            # prior-advance requirement (Minervini Stage 2)
+            "prior_uptrend": sig.get("prior_uptrend"),
+            "pct_from_52wk_low": sig.get("pct_from_52wk_low"),
+            # UW deep factors (None = no data; percentile_rank maps None -> neutral 0.5,
+            # which is fairer than 0.0 → dead-last when an API call simply failed)
+            "flow_bullishness": None,
+            "gex_score": None,
             "gex_regime": None,
             "gamma_wall": None,
             "gamma_wall_pressure": 0.0,
             "wall_distance": None,
             "max_pain": None,
-            "darkpool_premium": 0.0,
+            "darkpool_premium": None,
             "darkpool_accum": False,
-            "smart_money_score": 0.0,
+            "smart_money_score": None,
             "smart_money_flag": False,
             "seasonality": None,
             "earnings_flag": UW.earnings_within(metrics.get("next_earnings_date"), config.typical_csp_dte),
@@ -205,8 +269,8 @@ def run_scan(
     # --- Stage 2: deep-dive UW calls on the strongest structures ---
     deep: List[Dict[str, Any]] = []
     if uw_active:
-        features.sort(key=lambda f: f["_prelim"], reverse=True)
-        deep = features[: max(config.deep_dive_n, config.top_n)]
+        max_deep = max(config.deep_dive_n, config.top_n)
+        deep = sorted(features, key=lambda f: f["_prelim"], reverse=True)[:max_deep]
         for f in deep:
             f["_deep"] = True
             sym = f["symbol"]
@@ -318,7 +382,8 @@ def run_scan(
     # name with real flow/GEX/dark-pool. Percentile ranks are computed within
     # this consistent set.
     scored = deep if (uw_active and deep) else features
-    score_candidates(scored, weights=config.normalized_weights(), regime_scale=regime_scale)
+    weights = config.normalized_weights()
+    score_candidates(scored, weights=weights, regime_scale=regime_scale)
     scored.sort(key=lambda f: f.get("score", 0.0), reverse=True)
 
     top = scored[: config.top_n]
@@ -332,9 +397,11 @@ def run_scan(
                 setup_type=f.get("setup_type", "none"),
                 pivot_price=_round(f.get("pivot_price")),
                 current_price=_round(f.get("current_price")),
-                breakout_trigger=bool(f.get("breakout_trigger")),
                 volume_expansion=_round(f.get("vol_ratio"), 2),
                 pct_from_52wk_high=_round(f.get("pct_from_52wk_high"), 1),
+                pct_to_pivot=_round(
+                    _pct_to_pivot(f.get("current_price"), f.get("pivot_price")), 2
+                ),
                 iv_rank=_round(f.get("iv_rank"), 1),
                 implied_move=_round(f.get("implied_move"), 2),
                 iv_vs_realized=_round(f.get("iv_vs_realized"), 2),

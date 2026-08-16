@@ -11,6 +11,7 @@ All scores are returned in a 0..1 range unless noted (relative strength is a raw
 value that is percentile-ranked across the universe later).
 """
 
+import math
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -166,34 +167,160 @@ def relative_strength(closes: np.ndarray, spy_closes: Optional[np.ndarray]) -> f
     return float(np.mean(vals)) if vals else 0.0
 
 
-def detect_pivot(highs: np.ndarray, closes: np.ndarray, window: int = 40, exclude: int = 2) -> Optional[float]:
-    """Identify the nearest overhead breakout pivot (recent swing high)."""
-    if len(highs) < window + exclude:
+def detect_pivot(
+    highs: np.ndarray,
+    closes: np.ndarray,
+    window: int = 40,
+    exclude: int = 2,
+    tolerance: float = 0.015,
+) -> Optional[float]:
+    """Identify the nearest overhead breakout pivot.
+
+    Prefers a multi-touch resistance cluster (two swing highs within `tolerance`
+    of each other) over a single naked spike high. Falls back to rolling max when
+    no cluster is found.
+    """
+    if len(highs) < window + exclude + 4:
         return None
     region = highs[-window - exclude:-exclude] if exclude > 0 else highs[-window:]
-    if len(region) == 0:
+    if len(region) < 5:
         return None
+
+    # Local swing highs: higher than 2 bars on each side
+    swing_highs = []
+    for i in range(2, len(region) - 2):
+        if (region[i] >= region[i - 1] and region[i] >= region[i + 1]
+                and region[i] >= region[i - 2] and region[i] >= region[i + 2]):
+            swing_highs.append(float(region[i]))
+
+    if len(swing_highs) >= 2:
+        sorted_highs = sorted(swing_highs)
+        for j in range(len(sorted_highs) - 1):
+            lo, hi = sorted_highs[j], sorted_highs[j + 1]
+            if lo > 0 and (hi - lo) / lo <= tolerance:
+                return float((lo + hi) / 2)
+
     return float(np.max(region))
 
 
-def pivot_proximity(current_price: float, pivot: Optional[float]) -> float:
+def pivot_proximity(
+    current_price: float,
+    pivot: Optional[float],
+    atr_value: Optional[float] = None,
+) -> float:
     """Score for price coiling *just below* the pivot (pre-breakout zone).
 
-    Highest when price sits within ~0-4% under the pivot. Penalizes names that
-    already broke out (we want them *before* the move) or are far below.
+    Distance is measured in ATR units rather than raw percent: a name with a
+    0.8% average range sitting 3% under its pivot needs far more time and
+    conviction to get there than a 4% mover at the same percentage, and the two
+    should not score alike. Falls back to a percent-based ATR estimate when no
+    ATR is supplied.
+
+    The curve is smooth (Gaussian-style decay) so small changes in price never
+    produce a discontinuous jump in rank.
     """
     if not pivot or pivot <= 0 or not current_price or current_price <= 0:
         return 0.0
-    dist = (pivot - current_price) / pivot  # >0 below pivot, <0 above
-    if dist < -0.02:
-        return 0.1  # already extended above pivot
-    if dist < 0:
-        return 0.5  # just poked above (still interesting)
-    if dist <= 0.04:
-        return 1.0 - (dist / 0.04) * 0.2  # 0% -> 1.0, 4% -> 0.8
-    if dist <= 0.12:
-        return _clip01(0.8 - (dist - 0.04) / 0.08 * 0.6)
-    return 0.1
+
+    # Fall back to a 2%-of-price pseudo-ATR so the function still works standalone.
+    unit = atr_value if (atr_value and atr_value > 0) else current_price * 0.02
+    dist_atr = (pivot - current_price) / unit  # >0 below pivot, <0 above
+
+    # Asymmetric Gaussian peaking just under the pivot. Both branches evaluate
+    # to 1.0 at the peak, so the curve is continuous: a name drifting across its
+    # pivot never jumps in rank. Decay is faster on the upside because a stock
+    # already above the pivot without volume is a failed break, not a setup.
+    peak = 0.25          # ATRs below the pivot where readiness is maximal
+    below_width = 3.0    # still has room to travel -> gentle decay
+    above_width = 1.2    # extending away from the base -> steep decay
+
+    width = below_width if dist_atr >= peak else above_width
+    return _clip01(math.exp(-(((dist_atr - peak) / width) ** 2)))
+
+
+def base_duration(highs: np.ndarray, lows: np.ndarray, max_lookback: int = 120) -> Dict[str, Any]:
+    """How many bars the current consolidation has held together.
+
+    Constructive bases take time to build - institutions cannot accumulate a
+    position in three days. Walks backwards from the most recent bar counting
+    how long price stayed inside a band anchored on the recent range, then
+    scores that duration (roughly: 2 weeks -> low, 7+ weeks -> full credit).
+    """
+    if len(highs) < 20:
+        return {"bars": 0, "score": 0.0}
+
+    window = min(len(highs), max_lookback)
+    h = highs[-window:]
+    l = lows[-window:]
+
+    # Anchor the band on the last 10 bars, then extend back while price stays inside.
+    anchor_high = float(np.max(h[-10:]))
+    anchor_low = float(np.min(l[-10:]))
+    if anchor_high <= 0:
+        return {"bars": 0, "score": 0.0}
+
+    mid = (anchor_high + anchor_low) / 2.0
+    if mid <= 0:
+        return {"bars": 0, "score": 0.0}
+    # Allow the base to be up to ~1.6x the anchor range before we call it broken.
+    half_band = max((anchor_high - anchor_low) / 2.0, mid * 0.02) * 1.6
+    upper, lower = mid + half_band, mid - half_band
+
+    bars = 0
+    for i in range(len(h) - 1, -1, -1):
+        if h[i] > upper or l[i] < lower:
+            break
+        bars += 1
+
+    # 10 bars -> 0.0, 35+ bars (~7 weeks) -> 1.0
+    score = _clip01((bars - 10) / 25.0)
+    return {"bars": int(bars), "score": score}
+
+
+def up_down_volume_ratio(closes: np.ndarray, volumes: np.ndarray, lookback: int = 50) -> Dict[str, Any]:
+    """Institutional accumulation proxy: volume on up days vs down days.
+
+    The classic O'Neil up/down volume ratio. A base being quietly accumulated
+    trades heavier on advances than declines even while total volume dries up,
+    which plain ``volume_dryup`` cannot distinguish.
+    """
+    if len(closes) < lookback + 1 or len(volumes) < lookback + 1:
+        return {"ratio": None, "score": 0.0}
+
+    c = closes[-lookback - 1:]
+    v = volumes[-lookback:]
+    changes = np.diff(c)
+    up_vol = float(np.sum(v[changes > 0]))
+    down_vol = float(np.sum(v[changes < 0]))
+
+    if down_vol <= 0:
+        # All-up or no down volume: strong, but avoid a divide-by-zero infinity.
+        return {"ratio": 2.0 if up_vol > 0 else None, "score": 1.0 if up_vol > 0 else 0.0}
+
+    ratio = up_vol / down_vol
+    # 1.0 (balanced) -> 0.0, 2.0+ (twice the volume on up days) -> 1.0
+    return {"ratio": float(ratio), "score": _clip01(ratio - 1.0)}
+
+
+def tight_closes(closes: np.ndarray, bars: int = 5, threshold: float = 0.02) -> Dict[str, Any]:
+    """Minervini-style "tight closes": a run of closes inside a narrow band.
+
+    Consecutive closes clustered within a couple of percent mean supply has
+    dried up completely and the stock is ready to move. Measures the spread of
+    the last ``bars`` closes relative to their mean.
+    """
+    if len(closes) < bars:
+        return {"spread": None, "tight": False, "score": 0.0}
+
+    seg = closes[-bars:]
+    mean = float(np.mean(seg))
+    if mean <= 0:
+        return {"spread": None, "tight": False, "score": 0.0}
+
+    spread = (float(np.max(seg)) - float(np.min(seg))) / mean
+    # 0% spread -> 1.0, at or beyond the threshold -> 0.0
+    score = _clip01(1.0 - spread / threshold)
+    return {"spread": float(spread * 100.0), "tight": bool(spread <= threshold), "score": score}
 
 
 def atr(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> Optional[float]:
@@ -226,11 +353,12 @@ def adr_pct(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int
 
 
 def volume_expansion(volumes: np.ndarray, long: int = 50) -> Dict[str, Any]:
-    """Breakout *confirmation* - is volume expanding vs the base average?
+    """Is volume expanding vs the base average?
 
     The opposite of ``volume_dryup``: a real breakout fires on a surge of volume.
-    Returns the most-recent-day volume ratio vs the ``long``-day average plus a
-    0..1 expansion score (ratio 2x -> 1.0).
+    Feeds ``breakout_trigger`` (the pre-breakout exclusion filter) and is shown
+    as context in the UI; it is deliberately *not* a scored factor, since volume
+    expansion only tells you a move has already started.
     """
     if len(volumes) < long:
         return {"ratio": 1.0, "score": 0.0}
@@ -306,18 +434,77 @@ def breakout_trigger(
     vol_ratio: float,
     vol_mult: float = 1.5,
     max_extension: float = 0.10,
+    vol_ratio_confirmed: Optional[float] = None,
 ) -> bool:
-    """Confirmed-breakout trigger: price closed above the pivot on expanding
-    volume and is not already badly extended above it.
+    """Confirmed-breakout trigger: price closed above the pivot on expanding volume.
+
+    Checks both the current bar (closes[-1]) and the prior complete bar
+    (closes[-2]) so the scanner works correctly when run intraday — the current
+    bar may be partial, but the prior bar is always complete. Pass
+    ``vol_ratio_confirmed`` (prior bar's volume ratio) to enable the prior-bar check.
     """
     if not pivot or pivot <= 0 or len(closes) == 0:
         return False
-    price = float(closes[-1])
-    if price <= pivot:
-        return False
-    if (price - pivot) / pivot > max_extension:
-        return False  # already ran away from the pivot
-    return vol_ratio >= vol_mult
+
+    def _triggered(price: float, vr: float) -> bool:
+        if price <= pivot or (price - pivot) / pivot > max_extension:
+            return False
+        return vr >= vol_mult
+
+    if _triggered(float(closes[-1]), vol_ratio):
+        return True
+    if vol_ratio_confirmed is not None and len(closes) >= 2:
+        if _triggered(float(closes[-2]), vol_ratio_confirmed):
+            return True
+    return False
+
+
+def flag_pattern(
+    closes: np.ndarray,
+    volumes: np.ndarray,
+    pole_bars: int = 20,
+    flag_bars: int = 10,
+    min_advance: float = 0.12,
+    max_pullback: float = 0.15,
+    max_flag_range: float = 0.12,
+) -> Dict[str, Any]:
+    """Bull flag continuation: rapid advance (pole) followed by tight low-volume consolidation.
+
+    Detects stocks that already had a breakout run and are coiling in a tight
+    flag for the next leg — a continuation signal distinct from a fresh base-breakout.
+    """
+    needed = pole_bars + flag_bars
+    if len(closes) < needed or len(volumes) < needed:
+        return {"flag": False, "score": 0.0}
+
+    pole_start = float(closes[-(pole_bars + flag_bars)])
+    pole_end = float(closes[-flag_bars])
+    if pole_start <= 0 or pole_end <= 0:
+        return {"flag": False, "score": 0.0}
+
+    advance = (pole_end - pole_start) / pole_start
+    if advance < min_advance:
+        return {"flag": False, "score": 0.0}
+
+    flag_seg = closes[-flag_bars:]
+    flag_high = float(np.max(flag_seg))
+    flag_low = float(np.min(flag_seg))
+    pullback = (pole_end - flag_low) / pole_end
+    flag_range = (flag_high - flag_low) / pole_end
+
+    if pullback > max_pullback or flag_range > max_flag_range:
+        return {"flag": False, "score": 0.0}
+
+    pole_vol = float(np.mean(volumes[-(pole_bars + flag_bars):-flag_bars]))
+    flag_vol = float(np.mean(volumes[-flag_bars:]))
+    vol_ratio_pf = (flag_vol / pole_vol) if pole_vol > 0 else 1.0
+
+    advance_score = _clip01((advance - min_advance) / 0.20)   # 12% → 0, 32%+ → 1.0
+    tightness_score = _clip01(1.0 - flag_range / max_flag_range)
+    vol_score = _clip01(1.0 - vol_ratio_pf)                    # lower flag vol → higher
+
+    score = 0.35 * advance_score + 0.45 * tightness_score + 0.20 * vol_score
+    return {"flag": True, "score": float(_clip01(score))}
 
 
 def rs_line_new_high(closes: np.ndarray, spy_closes: Optional[np.ndarray], lookback: int = 60) -> bool:
@@ -341,9 +528,15 @@ def rs_line_new_high(closes: np.ndarray, spy_closes: Optional[np.ndarray], lookb
 
 
 def classify_setup(sig: Dict[str, float]) -> str:
-    """Human-readable setup label from the computed structure signals."""
-    if sig.get("breakout_trigger"):
-        return "confirmed_breakout"
+    """Human-readable setup label from the computed structure signals.
+
+    Confirmed breakouts never reach this function - the scanner excludes them
+    in Stage 1 - so every label here describes a still-coiling setup.
+    """
+    if sig.get("flag_pattern"):
+        return "bull_flag"
+    if sig.get("tight_closes", 0) > 0.6 and sig.get("pivot", 0) > 0.6:
+        return "tight_at_pivot"
     if sig.get("compression", 0) > 0.6 and sig.get("squeeze"):
         if sig.get("pivot", 0) > 0.6:
             return "squeeze_breakout_setup"
@@ -360,6 +553,7 @@ def classify_setup(sig: Dict[str, float]) -> str:
 def compute_structure_signals(
     ohlc: List[Dict[str, Any]],
     spy_closes: Optional[np.ndarray] = None,
+    sector_closes: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """Compute all price-structure leading signals for one ticker.
 
@@ -374,10 +568,44 @@ def compute_structure_signals(
 
     comp = bollinger_compression(closes)
     pivot = detect_pivot(highs, closes)
+    atr_value = atr(highs, lows, closes)
     sma50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else None
     sma200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else None
     vol_exp = volume_expansion(volumes)
     high52 = fifty_two_week(highs, closes)
+
+    # Prior complete bar volume ratio — avoids intraday partial-bar artifacts.
+    # volumes[-1] may be mid-session; volumes[-2] is always a full trading day.
+    if len(volumes) >= 52:
+        avg_vol_base = float(np.mean(volumes[-51:-1]))
+    elif len(volumes) >= 2:
+        avg_vol_base = float(np.mean(volumes[:-1]))
+    else:
+        avg_vol_base = None
+    vol_ratio_confirmed = (
+        float(volumes[-2]) / avg_vol_base
+        if (avg_vol_base and avg_vol_base > 0 and len(volumes) >= 2)
+        else None
+    )
+
+    # Bull flag continuation pattern
+    flag = flag_pattern(closes, volumes)
+
+    # Base construction: how mature, how accumulated, how tight
+    duration = base_duration(highs, lows)
+    updown = up_down_volume_ratio(closes, volumes)
+    tight = tight_closes(closes)
+
+    # Sector-relative RS (None when sector ETF unavailable → neutral 0.5 in percentile rank)
+    sector_rs_raw = relative_strength(closes, sector_closes) if sector_closes is not None else None
+
+    # Prior uptrend: price is up ≥25% from its 52-week low — Minervini Stage 2 prerequisite.
+    # This is the non-redundant part of the uptrend signal (near_52wk_high already
+    # handles proximity to the high; this captures that a real advance occurred first).
+    lookback_lows = lows[-252:] if len(lows) >= 252 else lows
+    low_52 = float(np.min(lookback_lows))
+    pct_from_low = (current_price - low_52) / low_52 if low_52 > 0 else 0.0
+    prior_uptrend = pct_from_low >= 0.25
 
     sig: Dict[str, Any] = {
         "compression": comp["compression"],
@@ -387,21 +615,37 @@ def compute_structure_signals(
         "volume_dryup": volume_dryup(volumes),
         "rs_raw": relative_strength(closes, spy_closes),
         "rs_new_high": rs_line_new_high(closes, spy_closes),
-        "pivot": pivot_proximity(current_price, pivot),
-        # breakout confirmation
+        "pivot": pivot_proximity(current_price, pivot, atr_value),
+        # exclusion filter (vol_ratio_confirmed enables prior-bar check for intraday runs)
         "volume_expansion": vol_exp["score"],
         "vol_ratio": vol_exp["ratio"],
-        "breakout_trigger": breakout_trigger(closes, pivot, vol_exp["ratio"]),
+        "breakout_trigger": breakout_trigger(
+            closes, pivot, vol_exp["ratio"], vol_ratio_confirmed=vol_ratio_confirmed
+        ),
         # base / leadership context
         "near_52wk_high": high52["near_high"],
         "pct_from_52wk_high": high52["pct_from_high"],
         "base_quality": base_quality(highs, lows, closes),
+        "prior_uptrend": prior_uptrend,
+        "pct_from_52wk_low": float(pct_from_low * 100.0) if low_52 > 0 else None,
+        # continuation pattern
+        "flag_pattern": flag["flag"],
+        "flag_score": flag["score"],
+        # base construction
+        "base_duration_bars": duration["bars"],
+        "base_duration": duration["score"],
+        "up_down_volume": updown["score"],
+        "up_down_volume_ratio": updown["ratio"],
+        "tight_closes": tight["score"],
+        "tight_closes_pct": tight["spread"],
+        # sector-relative RS (None = no sector data)
+        "sector_rs_raw": sector_rs_raw,
         # context
         "current_price": current_price,
         "avg_volume": float(np.mean(volumes[-20:])) if len(volumes) >= 20 else float(np.mean(volumes)),
         "avg_volume_50": float(np.mean(volumes[-50:])) if len(volumes) >= 50 else None,
         "pivot_price": pivot,
-        "atr": atr(highs, lows, closes),
+        "atr": atr_value,
         "adr_pct": adr_pct(highs, lows, closes),
         "realized_vol": realized_vol(closes),
         "above_sma50": (sma50 is not None and current_price > sma50),

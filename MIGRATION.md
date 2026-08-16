@@ -470,10 +470,31 @@ publishes the top picks into the **"Momentum Stocks"** system Trade Idea.
   python -m scripts.run_breakout_scan
   ```
 
-## Scheduling (cron)
+## Scheduling
 
-Run daily after the close (e.g. 4:30pm ET). Use the universe/config stored in the
-database, so the cron just invokes the script.
+### Built in (recommended)
+
+The backend runs its own scheduler, so **no cron service is required**. In the
+Admin dashboard open **Breakout Scanner → Automatic scan**, turn it on, and pick
+a time, timezone, and days. It defaults to **16:30 America/New_York, Mon–Fri**
+(30 minutes after the close, once the daily bar has settled).
+
+The schedule is stored in the database and applies immediately — no redeploy.
+Notes:
+
+- Off by default, so upgrading never starts a recurring job on its own.
+- Fires at most once per day, and defers rather than colliding with a manual run.
+- If the process was down at the scheduled minute it still runs on restart, up to
+  4 hours late; after that the day is skipped.
+- Market holidays are **not** skipped (there is no market calendar in the app). A
+  holiday run is harmless — the last daily bar is unchanged.
+- **Run Scan** in the admin UI always works, schedule on or off.
+
+### External cron (alternative)
+
+Still supported for hosts that prefer an external scheduler. Use one or the
+other; running both is safe but redundant. The script reads the universe/config
+from the database, so the cron just invokes it.
 
 **Railway** – add a separate *Cron* service (or a scheduled job) pointing at the
 backend image with:
@@ -494,8 +515,8 @@ Command:         python -m scripts.run_breakout_scan
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/admin/breakout-scanner` | GET | Get scanner settings + last-run status (admin) |
-| `/api/v1/admin/breakout-scanner` | PUT | Update universe + config (admin) |
+| `/api/v1/admin/breakout-scanner` | GET | Get scanner settings + last-run status + next scheduled run (admin) |
+| `/api/v1/admin/breakout-scanner` | PUT | Update universe, config, and auto-scan schedule (admin) |
 | `/api/v1/admin/breakout-scanner/run` | POST | Trigger a scan as a background job (admin) |
 | `/api/v1/admin/breakout-scanner/results` | GET | Get the latest ranked results (admin) |
 

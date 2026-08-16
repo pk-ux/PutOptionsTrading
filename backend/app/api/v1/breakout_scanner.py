@@ -6,10 +6,13 @@ Admin-only endpoints to manage the scan universe + config, trigger a scan
 (background job), and read the latest ranked results.
 """
 
+import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from ...core.config import get_settings
@@ -23,6 +26,14 @@ from ...modules.breakout_scanner.integration import (
     reset_status,
     run_and_publish,
 )
+from ...modules.breakout_scanner.scheduler import (
+    describe_schedule,
+    next_run_at,
+    plan_from_settings,
+)
+from ...modules.breakout_scanner.types import ScannerConfig
+
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 router = APIRouter()
 
@@ -31,15 +42,31 @@ router = APIRouter()
 class BreakoutSettingsResponse(BaseModel):
     enabled: bool
     universe: List[str]
+    universe_mode: str = "curated"
+    auto_universe_size: int = 300
     top_n: int
     deep_dive_n: int
     use_unusual_whales: bool
     weights: Dict[str, float]
+    # Weights actually applied after defaults are merged in and renormalized to
+    # 1.0, so the UI can show real per-factor contributions without duplicating
+    # the scoring constants.
+    effective_weights: Dict[str, float]
     min_price: float
     max_price: float
     min_avg_volume: int
     require_above_sma200: bool
     typical_csp_dte: int
+    # Automatic scan schedule
+    auto_scan_enabled: bool
+    auto_scan_time: str  # "HH:MM" local to auto_scan_timezone
+    auto_scan_timezone: str  # IANA zone name
+    auto_scan_days: List[int]  # Python weekday() numbers, Mon=0
+    auto_scan_summary: str
+    last_auto_run_at: Optional[str] = None
+    # Resolved from the schedule so the UI never has to reimplement the math
+    # (weekday mask, catch-up window, already-ran-today) to show a countdown.
+    next_auto_run_at: Optional[str] = None
     last_run_at: Optional[str] = None
     last_run_status: str
     last_run_message: Optional[str] = None
@@ -51,6 +78,8 @@ class BreakoutSettingsResponse(BaseModel):
 class BreakoutSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
     universe: Optional[List[str]] = None
+    universe_mode: Optional[str] = None
+    auto_universe_size: Optional[int] = None
     top_n: Optional[int] = None
     deep_dive_n: Optional[int] = None
     use_unusual_whales: Optional[bool] = None
@@ -60,6 +89,44 @@ class BreakoutSettingsUpdate(BaseModel):
     min_avg_volume: Optional[int] = None
     require_above_sma200: Optional[bool] = None
     typical_csp_dte: Optional[int] = None
+    auto_scan_enabled: Optional[bool] = None
+    auto_scan_time: Optional[str] = None
+    auto_scan_timezone: Optional[str] = None
+    auto_scan_days: Optional[List[int]] = None
+
+    @field_validator("auto_scan_time")
+    @classmethod
+    def _validate_time(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not _TIME_RE.match(v):
+            raise ValueError("auto_scan_time must be 24-hour 'HH:MM', e.g. '16:30'")
+        return v
+
+    @field_validator("auto_scan_timezone")
+    @classmethod
+    def _validate_timezone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError, KeyError):
+            raise ValueError(f"Unknown IANA timezone: {v!r}")
+        return v
+
+    @field_validator("auto_scan_days")
+    @classmethod
+    def _validate_days(cls, v: Optional[List[int]]) -> Optional[List[int]]:
+        if v is None:
+            return v
+        days = sorted({int(d) for d in v})
+        if not days:
+            raise ValueError("auto_scan_days must select at least one day")
+        if any(d < 0 or d > 6 for d in days):
+            raise ValueError("auto_scan_days entries must be 0 (Mon) through 6 (Sun)")
+        return days
 
 
 class BreakoutRunResponse(BaseModel):
@@ -70,10 +137,39 @@ class BreakoutRunResponse(BaseModel):
 # ----------------------------- Helpers ----------------------------- #
 def _settings_response(settings: BreakoutScannerSettings) -> BreakoutSettingsResponse:
     data = settings.to_dict()
+    config = ScannerConfig()
+    overrides = data.get("weights") or {}
+    if overrides:
+        config.weights = {**config.weights, **overrides}
+
+    plan = plan_from_settings(settings)
+    next_run = next_run_at(plan, datetime.now(timezone.utc))
+
     return BreakoutSettingsResponse(
         **data,
+        effective_weights={
+            k: round(v, 4) for k, v in config.normalized_weights().items()
+        },
+        auto_scan_summary=describe_schedule(plan),
+        next_auto_run_at=next_run.isoformat() if next_run else None,
         unusual_whales_configured=bool(get_settings().UNUSUAL_WHALES_API_KEY),
     )
+
+
+def _rearm_if_slot_still_ahead(settings: BreakoutScannerSettings) -> None:
+    """Let a schedule edit take effect today when the new time hasn't passed yet.
+
+    Moving 16:30 -> 20:00 at 17:00 should run tonight, which requires clearing the
+    already-ran marker for today. Moving 16:30 -> 16:45 after both have passed must
+    not, or the edit would immediately trigger a duplicate catch-up scan.
+    """
+    plan = plan_from_settings(settings)
+    if not plan.active:
+        return
+    now_local = datetime.now(timezone.utc).astimezone(plan.tz)
+    today = now_local.date()
+    if today.weekday() in plan.days and now_local < plan.fire_time_on(today):
+        settings.last_auto_run_date = None
 
 
 # ----------------------------- Endpoints ----------------------------- #
@@ -108,8 +204,13 @@ async def update_breakout_settings(
             settings.universe = cleaned
         elif field == "weights" and value is not None:
             settings.weights = json.dumps(value)
+        elif field == "auto_scan_days" and value is not None:
+            settings.auto_scan_days = ",".join(str(d) for d in value)
         else:
             setattr(settings, field, value)
+
+    if {"auto_scan_time", "auto_scan_timezone", "auto_scan_days"} & update.keys():
+        _rearm_if_slot_still_ahead(settings)
 
     db.commit()
     db.refresh(settings)
@@ -126,10 +227,16 @@ async def run_breakout_scan(
     settings = get_or_create_settings(db)
     reset_if_stale(db, settings)
 
+    if not settings.enabled:
+        return BreakoutRunResponse(
+            status="error", message="Breakout scanner is disabled. Enable it in settings first."
+        )
+
     if settings.last_run_status == "running":
         return BreakoutRunResponse(status="running", message="A scan is already in progress")
 
-    if not settings.get_universe_list():
+    universe_mode = getattr(settings, "universe_mode", None) or "curated"
+    if universe_mode == "curated" and not settings.get_universe_list():
         return BreakoutRunResponse(status="error", message="Scan universe is empty. Add tickers first.")
 
     # Mark running immediately so the UI reflects state before the job starts

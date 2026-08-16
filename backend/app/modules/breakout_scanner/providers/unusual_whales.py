@@ -147,6 +147,30 @@ class UnusualWhalesProvider:
     # ------------------------------------------------------------------ #
     # Public endpoints
     # ------------------------------------------------------------------ #
+    def stock_screener_universe(
+        self,
+        max_symbols: int = 300,
+        min_price: Optional[float] = None,
+    ) -> List[str]:
+        """Return the top optionable US equities ranked by options volume.
+
+        Used in auto-universe mode to discover breakout candidates beyond the
+        manually curated watchlist. These names are already covered by UW data,
+        so Stage-2 deep-dive calls will succeed for them.
+        """
+        params: Dict[str, Any] = {"limit": min(max_symbols, 500)}
+        if min_price and min_price > 0:
+            params["min_underlying_price"] = str(min_price)
+        payload = self._get("/api/screener/stocks", params)
+        symbols: List[str] = []
+        for row in self._data(payload):
+            sym = (row.get("ticker") or row.get("symbol") or "").upper()
+            issue = (row.get("issue_type") or "").strip()
+            # Keep Common Stock and ADRs; skip ETFs, indices, crypto pairs
+            if sym and "/" not in sym and issue in ("", "Common Stock", "ADR"):
+                symbols.append(sym)
+        return symbols[:max_symbols]
+
     def stock_screener(self, tickers: List[str]) -> Dict[str, Dict[str, Any]]:
         """Bulk flow/IV metrics for the given tickers, keyed by symbol."""
         if not tickers:

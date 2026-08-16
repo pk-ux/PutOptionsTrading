@@ -38,8 +38,21 @@ async def lifespan(app: FastAPI):
     cache = get_cache()
     if cache.ping():
         print(f"Cache initialized: {type(cache).__name__}")
-    
+
+    # Breakout scanner auto-scan schedule (no-op unless an admin enabled it)
+    try:
+        from .modules.breakout_scanner.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        print(f"Auto-scan scheduler not started: {e}")
+
     yield
+
+    try:
+        from .modules.breakout_scanner.scheduler import stop_scheduler
+        await stop_scheduler()
+    except Exception:
+        pass
     print("Shutting down...")
 
 

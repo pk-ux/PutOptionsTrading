@@ -17,6 +17,11 @@ from sqlalchemy import inspect as sa_inspect, text
 from ...core.config import get_settings
 from ...core.database import SessionLocal, engine
 from ...models import BreakoutScannerSettings, BreakoutScanResult, TradeIdea
+from ...models.breakout_scanner import (
+    DEFAULT_AUTO_SCAN_DAYS,
+    DEFAULT_AUTO_SCAN_TIME,
+    DEFAULT_AUTO_SCAN_TIMEZONE,
+)
 from . import run_scan
 from .providers.alpaca_provider import AlpacaPriceProvider
 from .providers.unusual_whales import UnusualWhalesProvider
@@ -39,15 +44,33 @@ STALE_RUNNING_MINUTES = 15
 # so on an already-provisioned DB we add any missing columns defensively here.
 # (name -> SQL type valid for both SQLite and Postgres)
 _RESULT_COLUMNS = {
-    "breakout_trigger": "BOOLEAN",
     "volume_expansion": "FLOAT",
     "pct_from_52wk_high": "FLOAT",
+    "pct_to_pivot": "FLOAT",
     "iv_vs_realized": "FLOAT",
     "gamma_wall": "FLOAT",
     "max_pain": "FLOAT",
 }
 _SETTINGS_COLUMNS = {
     "last_market_context": "TEXT",
+    "universe_mode": "TEXT",
+    "auto_universe_size": "INTEGER",
+    "auto_scan_enabled": "BOOLEAN",
+    "auto_scan_time": "TEXT",
+    "auto_scan_timezone": "TEXT",
+    "auto_scan_days": "TEXT",
+    "last_auto_run_date": "TEXT",
+    "last_auto_run_at": "TIMESTAMP",
+}
+
+# ALTER TABLE ADD COLUMN leaves existing rows NULL, but the scheduler reads these
+# on every tick. Backfill the singleton row so an upgraded DB behaves exactly like
+# a freshly created one.
+_SETTINGS_BACKFILL = {
+    "auto_scan_enabled": False,
+    "auto_scan_time": DEFAULT_AUTO_SCAN_TIME,
+    "auto_scan_timezone": DEFAULT_AUTO_SCAN_TIMEZONE,
+    "auto_scan_days": DEFAULT_AUTO_SCAN_DAYS,
 }
 
 _schema_ready = False
@@ -65,6 +88,7 @@ def ensure_schema() -> None:
             ("breakout_scan_results", _RESULT_COLUMNS),
             ("breakout_scanner_settings", _SETTINGS_COLUMNS),
         ]
+        added: set = set()
         with engine.begin() as conn:
             for table, columns in plans:
                 if table not in tables:
@@ -75,7 +99,18 @@ def ensure_schema() -> None:
                         conn.execute(
                             text(f'ALTER TABLE {table} ADD COLUMN {name} {sqltype}')
                         )
+                        added.add(name)
                         logger.info(f"Added column {table}.{name}")
+
+            for name, value in _SETTINGS_BACKFILL.items():
+                if name in added:
+                    conn.execute(
+                        text(
+                            "UPDATE breakout_scanner_settings "
+                            f"SET {name} = :value WHERE {name} IS NULL"
+                        ),
+                        {"value": value},
+                    )
         _schema_ready = True
     except Exception as e:  # pragma: no cover - best-effort migration
         logger.warning(f"ensure_schema failed (continuing): {e}")
@@ -133,11 +168,30 @@ def _build_config(settings: BreakoutScannerSettings) -> ScannerConfig:
         min_avg_volume=settings.min_avg_volume,
         require_above_sma200=settings.require_above_sma200,
         typical_csp_dte=settings.typical_csp_dte,
+        universe_mode=getattr(settings, "universe_mode", None) or "curated",
+        auto_universe_size=getattr(settings, "auto_universe_size", None) or 300,
     )
     weights = settings.get_weights()
     if weights:
         config.weights = {**config.weights, **weights}
     return config
+
+
+def _build_auto_universe(uw_provider, config: ScannerConfig, log) -> list:
+    """Fetch the top optionable US equities from UW screener for auto-universe mode."""
+    if uw_provider is None or not uw_provider.is_available():
+        log.warning("Auto universe requested but UW provider is unavailable; falling back to curated list")
+        return []
+    try:
+        symbols = uw_provider.stock_screener_universe(
+            max_symbols=config.auto_universe_size,
+            min_price=config.min_price,
+        )
+        log.info(f"Auto universe: {len(symbols)} symbols from UW screener")
+        return symbols
+    except Exception as e:
+        log.warning(f"Auto universe fetch failed: {e}")
+        return []
 
 
 def _set_status(db, settings: BreakoutScannerSettings, status: str, message: Optional[str] = None) -> None:
@@ -188,9 +242,9 @@ def _persist_results(db, result) -> None:
                 setup_type=c.setup_type,
                 pivot_price=c.pivot_price,
                 current_price=c.current_price,
-                breakout_trigger=bool(c.breakout_trigger),
                 volume_expansion=c.volume_expansion,
                 pct_from_52wk_high=c.pct_from_52wk_high,
+                pct_to_pivot=c.pct_to_pivot,
                 iv_rank=c.iv_rank,
                 implied_move=c.implied_move,
                 iv_vs_realized=c.iv_vs_realized,
@@ -221,12 +275,11 @@ def run_and_publish() -> Dict[str, Any]:
     try:
         ensure_schema()
         settings_row = get_or_create_settings(db)
-        universe = settings_row.get_universe_list()
-        if not universe:
-            _set_status(db, settings_row, "error", "Scan universe is empty. Add tickers first.")
-            return {"status": "error", "message": "Scan universe is empty"}
 
-        _set_status(db, settings_row, "running", "Scan in progress...")
+        if not settings_row.enabled:
+            msg = "Breakout scanner is disabled. Enable it in settings to run a scan."
+            _set_status(db, settings_row, "error", msg)
+            return {"status": "error", "message": msg}
 
         config = _build_config(settings_row)
 
@@ -258,6 +311,31 @@ def run_and_publish() -> Dict[str, Any]:
                 uw_provider = UnusualWhalesProvider(api_key=uw_key, min_interval=0.2)
             else:
                 logger.warning("use_unusual_whales is on but UNUSUAL_WHALES_API_KEY is not set")
+
+        # Determine scan universe: auto mode fetches top optionable names from UW;
+        # curated tickers are always merged in (and are the sole source in curated mode).
+        curated = settings_row.get_universe_list()
+        if config.universe_mode == "auto":
+            auto_symbols = _build_auto_universe(uw_provider, config, logger)
+            # Auto symbols first (ranked by options volume); curated appended for guaranteed inclusion
+            universe = list(dict.fromkeys(auto_symbols + curated))
+            if not universe:
+                _set_status(
+                    db, settings_row, "error",
+                    "Auto universe is empty. Configure UW API key or add curated tickers.",
+                )
+                if uw_provider is not None:
+                    uw_provider.close()
+                return {"status": "error", "message": "Auto universe is empty"}
+        else:
+            universe = curated
+            if not universe:
+                _set_status(db, settings_row, "error", "Scan universe is empty. Add tickers first.")
+                if uw_provider is not None:
+                    uw_provider.close()
+                return {"status": "error", "message": "Scan universe is empty"}
+
+        _set_status(db, settings_row, "running", "Scan in progress...")
 
         result = run_scan(
             tickers=universe,

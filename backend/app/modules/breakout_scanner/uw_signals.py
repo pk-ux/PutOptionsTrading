@@ -90,16 +90,21 @@ def flow_bullishness(alerts: List[Dict[str, Any]]) -> float:
         if is_call:
             net += premium * weight
         elif is_put:
-            net -= premium * (1.0 if is_ask else 0.5)
+            # ask-side puts (buying puts) = bearish → subtract; bid-side (selling puts) = bullish → add
+            net -= premium * weight
     return float(net)
 
 
-def oi_accumulation(metrics: Dict[str, Any]) -> float:
-    """Call open-interest build (positioning ahead of a move). Raw percent."""
+def oi_accumulation(metrics: Dict[str, Any]) -> Optional[float]:
+    """Call open-interest build (positioning ahead of a move). Raw percent.
+
+    Returns ``None`` when the screener row carries no OI data so the scorer can
+    rank it neutrally; a real 0% build and a missing field are not the same.
+    """
     val = metrics.get("call_oi_change_perc")
     if val is None:
         val = metrics.get("total_oi_change_perc")
-    return float(val) if val is not None else 0.0
+    return float(val) if val is not None else None
 
 
 def oi_accumulation_from_contracts(contracts: List[Dict[str, Any]]) -> Optional[float]:

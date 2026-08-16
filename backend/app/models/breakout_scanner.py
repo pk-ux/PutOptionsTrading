@@ -26,6 +26,38 @@ from sqlalchemy import (
 
 from ..core.database import Base
 
+# Auto-scan schedule defaults. Defined here (the lowest layer) so the model, the
+# scheduler, and the admin API all agree without a circular import.
+DEFAULT_AUTO_SCAN_TIME = "16:30"
+DEFAULT_AUTO_SCAN_TIMEZONE = "America/New_York"
+DEFAULT_AUTO_SCAN_DAYS = "0,1,2,3,4"  # Mon-Fri, Python weekday() numbering
+
+
+def parse_weekday_csv(value: Any, fallback: str = DEFAULT_AUTO_SCAN_DAYS) -> List[int]:
+    """Parse a "0,1,2" weekday string into a sorted, de-duplicated 0..6 list.
+
+    Falls back to `fallback` when the stored value is empty or unparseable so a
+    corrupt row can never silently disable the schedule.
+    """
+    def _parse(raw: Any) -> List[int]:
+        if raw is None:
+            return []
+        if isinstance(raw, (list, tuple, set)):
+            parts = list(raw)
+        else:
+            parts = str(raw).split(",")
+        days = set()
+        for part in parts:
+            try:
+                day = int(str(part).strip())
+            except (TypeError, ValueError):
+                continue
+            if 0 <= day <= 6:
+                days.add(day)
+        return sorted(days)
+
+    return _parse(value) or _parse(fallback)
+
 
 class BreakoutScannerSettings(Base):
     """Singleton-style configuration for the breakout scanner (id=1)."""
@@ -35,8 +67,10 @@ class BreakoutScannerSettings(Base):
     id = Column(Integer, primary_key=True, default=1)
     enabled = Column(Boolean, default=True, nullable=False)
 
-    # The user-managed scan universe (comma-separated tickers)
-    universe = Column(Text, default="", nullable=False)
+    # Universe source
+    universe = Column(Text, default="", nullable=False)  # comma-separated tickers (curated list)
+    universe_mode = Column(String(20), default="curated", nullable=False)  # "curated" | "auto"
+    auto_universe_size = Column(Integer, default=300, nullable=False)
 
     # Scoring config
     top_n = Column(Integer, default=15, nullable=False)
@@ -50,6 +84,22 @@ class BreakoutScannerSettings(Base):
     min_avg_volume = Column(Integer, default=500000, nullable=False)
     require_above_sma200 = Column(Boolean, default=False, nullable=False)
     typical_csp_dte = Column(Integer, default=35, nullable=False)
+
+    # Automatic scheduled scan. Opt-in: an existing deployment should never start
+    # spending API quota on a recurring job without an admin turning it on.
+    auto_scan_enabled = Column(Boolean, default=False, nullable=False)
+    # Local wall-clock "HH:MM" in auto_scan_timezone. 16:30 ET is 30 minutes after
+    # the 4:00pm US equities close, once the daily bar has settled.
+    auto_scan_time = Column(String(5), default=DEFAULT_AUTO_SCAN_TIME, nullable=False)
+    auto_scan_timezone = Column(
+        String(64), default=DEFAULT_AUTO_SCAN_TIMEZONE, nullable=False
+    )
+    # Comma-separated Python weekday() numbers (Mon=0 .. Sun=6).
+    auto_scan_days = Column(String(20), default=DEFAULT_AUTO_SCAN_DAYS, nullable=False)
+    # "YYYY-MM-DD" in auto_scan_timezone. Doubles as the once-per-day claim key so
+    # a scheduled scan can't fire twice for the same session.
+    last_auto_run_date = Column(String(10), nullable=True)
+    last_auto_run_at = Column(DateTime, nullable=True)
 
     # Run status
     last_run_at = Column(DateTime, nullable=True)
@@ -80,10 +130,15 @@ class BreakoutScannerSettings(Base):
         except (ValueError, TypeError):
             return {}
 
+    def get_auto_scan_days(self) -> List[int]:
+        return parse_weekday_csv(self.auto_scan_days)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "enabled": self.enabled,
             "universe": self.get_universe_list(),
+            "universe_mode": self.universe_mode or "curated",
+            "auto_universe_size": self.auto_universe_size or 300,
             "top_n": self.top_n,
             "deep_dive_n": self.deep_dive_n,
             "use_unusual_whales": self.use_unusual_whales,
@@ -93,6 +148,13 @@ class BreakoutScannerSettings(Base):
             "min_avg_volume": self.min_avg_volume,
             "require_above_sma200": self.require_above_sma200,
             "typical_csp_dte": self.typical_csp_dte,
+            "auto_scan_enabled": bool(self.auto_scan_enabled),
+            "auto_scan_time": self.auto_scan_time or DEFAULT_AUTO_SCAN_TIME,
+            "auto_scan_timezone": self.auto_scan_timezone or DEFAULT_AUTO_SCAN_TIMEZONE,
+            "auto_scan_days": self.get_auto_scan_days(),
+            "last_auto_run_at": (
+                self.last_auto_run_at.isoformat() if self.last_auto_run_at else None
+            ),
             "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
             "last_run_status": self.last_run_status,
             "last_run_message": self.last_run_message,
@@ -116,9 +178,9 @@ class BreakoutScanResult(Base):
     pivot_price = Column(Float, nullable=True)
     current_price = Column(Float, nullable=True)
 
-    breakout_trigger = Column(Boolean, default=False, nullable=False)
     volume_expansion = Column(Float, nullable=True)
     pct_from_52wk_high = Column(Float, nullable=True)
+    pct_to_pivot = Column(Float, nullable=True)
 
     iv_rank = Column(Float, nullable=True)
     implied_move = Column(Float, nullable=True)
@@ -153,9 +215,9 @@ class BreakoutScanResult(Base):
             "setup_type": self.setup_type,
             "pivot_price": self.pivot_price,
             "current_price": self.current_price,
-            "breakout_trigger": self.breakout_trigger,
             "volume_expansion": self.volume_expansion,
             "pct_from_52wk_high": self.pct_from_52wk_high,
+            "pct_to_pivot": self.pct_to_pivot,
             "iv_rank": self.iv_rank,
             "implied_move": self.implied_move,
             "iv_vs_realized": self.iv_vs_realized,
