@@ -133,7 +133,7 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
           )}
         </div>
         <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${getReturnBgClass(row.annualized_return)} ${getReturnClass(row.annualized_return)}`}>
-          {formatPercent(row.annualized_return)}
+          {row.annualized_return.toFixed(1)}% / yr
         </span>
       </div>
       
@@ -232,7 +232,7 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             <th>Price</th>
             <th>Strike</th>
             <th>Premium</th>
-            <th>Return</th>
+            <th title="Annualized return">Ann. return</th>
             <th>Daily Decay</th>
             <th>Prob Assign</th>
             <th>Expiry</th>

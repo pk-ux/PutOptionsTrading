@@ -41,7 +41,6 @@ export function Chip({
             : 'bg-dark-800/50 text-gray-400 hover:bg-dark-700 hover:text-gray-200 border border-dashed border-white/20 hover:border-primary-500/50'
         }
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        snap-start flex-shrink-0
       `}
       title={isDefault ? `${label} (Default)` : label}
     >
@@ -51,7 +50,7 @@ export function Chip({
       )}
       
       {/* Label with truncation */}
-      <span className="truncate max-w-[140px]">{label}</span>
+      <span>{label}</span>
       
       {/* Edit/Delete actions for user items */}
       {!isSystem && (onEdit || onDelete) && (
@@ -128,8 +127,8 @@ export function ChipSelector<T extends { id: string; name: string; is_system: bo
         {label}
       </span>
       
-      {/* Chips container - horizontal scroll on mobile */}
-      <div className="flex flex-nowrap sm:flex-wrap gap-2 items-center overflow-x-auto pb-1 -mx-1 px-1 snap-x snap-mandatory scroll-smooth">
+      {/* Chips wrap onto the next line instead of scrolling sideways */}
+      <div className="flex flex-wrap gap-2 items-center">
         {loading ? (
           <div className="flex items-center gap-2 text-gray-500 py-2">
             <svg className="animate-spin h-4 w-4 text-primary-500" fill="none" viewBox="0 0 24 24">
@@ -176,7 +175,6 @@ export function ChipSelector<T extends { id: string; name: string; is_system: bo
                   text-primary-400 hover:text-primary-300
                   hover:bg-primary-500/10 hover:border-primary-400
                   transition-all duration-200
-                  snap-start flex-shrink-0
                 "
               >
                 <Plus size={16} />

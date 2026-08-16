@@ -5,6 +5,12 @@
 
 import type { OptionResult } from '@/types';
 
+export const SUMMARY_VIEW = 'Summary';
+
+export function resultsViewLabel(view: string): string {
+  return view === SUMMARY_VIEW ? 'Best per stock' : view;
+}
+
 export function pickBestResult(rows: OptionResult[]): OptionResult {
   return rows.reduce((best, row) =>
     row.annualized_return > best.annualized_return ? row : best

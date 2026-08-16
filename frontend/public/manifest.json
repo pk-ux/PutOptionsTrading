@@ -1,7 +1,7 @@
 {
-  "name": "Put Options Screener",
-  "short_name": "Options",
-  "description": "Discover profitable put option opportunities with real-time market data",
+  "name": "PutYield",
+  "short_name": "PutYield",
+  "description": "Get paid to own stocks at a discount.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -9,21 +9,27 @@
   "background_color": "#0f172a",
   "icons": [
     {
-      "src": "/icons/icon-192.svg",
+      "src": "/icons/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.svg",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-maskable.svg",
+      "src": "/icons/icon-maskable.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],

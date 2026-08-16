@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Play, Loader2, ChevronDown, Menu } from 'lucide-react';
+import { Play, Loader2, ChevronDown, Menu, X } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import apiClient from '@/api/client';
 import { Sidebar } from '@/components/Sidebar';
@@ -20,7 +20,7 @@ import { TradeIdeaForm } from '@/components/TradeIdeaForm';
 import { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import { useFiltersAndIdeas } from '@/hooks/useFiltersAndIdeas';
-import { buildRankedResults } from '@/utils/resultsSummary';
+import { buildRankedResults, resultsViewLabel, SUMMARY_VIEW } from '@/utils/resultsSummary';
 import type { OptionResult, Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
 export function Dashboard() {
@@ -292,9 +292,9 @@ export function Dashboard() {
   ]);
 
   // Build view options
-  const viewOptions = Object.keys(results).filter(k => k !== 'Summary');
-  if (results.Summary) {
-    viewOptions.unshift('Summary');
+  const viewOptions = Object.keys(results).filter((k) => k !== SUMMARY_VIEW);
+  if (results[SUMMARY_VIEW]) {
+    viewOptions.unshift(SUMMARY_VIEW);
   }
 
   const activeView = viewOptions.includes(selectedView)
@@ -302,40 +302,55 @@ export function Dashboard() {
     : (viewOptions[0] || selectedView);
   const currentResults = results[activeView] || [];
 
-  return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      {sidebarOpen && <Sidebar />}
+  const resultsCaption = [
+    selectedTradeIdea?.name
+      ? `Best cash-secured puts on ${selectedTradeIdea.name}`
+      : 'Best cash-secured puts',
+    selectedFilter
+      ? `${selectedFilter.name} (≤${selectedFilter.max_assignment_probability}% assignment)`
+      : null,
+  ].filter(Boolean).join(' · ');
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {/* Header - responsive layout */}
-        <div className="mb-4 sm:mb-6">
-          <div className="flex items-start justify-between gap-2 sm:gap-3">
-            <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-              {/* Sidebar toggle button - larger touch target on mobile */}
-              {!sidebarOpen && (
-                <button
-                  onClick={toggleSidebar}
-                  className="p-2.5 sm:p-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white flex-shrink-0"
-                  title="Open settings"
-                >
-                  <Menu size={22} className="sm:w-5 sm:h-5" />
-                </button>
-              )}
-              <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold gradient-text mb-1 sm:mb-2 truncate">
-                  Put Options Screener
-                </h1>
-                <p className="text-gray-400 text-xs sm:text-sm hidden sm:block">
-                  Discover profitable put option opportunities with real-time market data
-                </p>
-              </div>
+  return (
+    <div className="flex flex-col h-screen">
+      <header className="flex-shrink-0 px-4 sm:px-6 py-4 border-b border-white/5 bg-dark-950">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <img
+              src="/favicon.svg"
+              alt=""
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex-shrink-0"
+            />
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold gradient-text truncate">
+                PutYield
+              </h1>
+              <p className="text-gray-400 text-xs sm:text-sm hidden sm:block mt-0.5">
+                Get paid to own stocks at a discount.
+              </p>
             </div>
-            {/* User menu */}
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <UserMenu />
+            <button
+              onClick={toggleSidebar}
+              className="p-2.5 sm:p-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+              title={sidebarOpen ? 'Close guide' : 'Open guide'}
+              aria-expanded={sidebarOpen}
+            >
+              {sidebarOpen ? (
+                <X size={22} className="sm:w-5 sm:h-5" />
+              ) : (
+                <Menu size={22} className="sm:w-5 sm:h-5" />
+              )}
+            </button>
           </div>
         </div>
+      </header>
+
+      <div className="relative flex-1 min-h-0">
+      {/* Main content */}
+      <main className="h-full overflow-y-auto p-4 sm:p-6">
 
         {/* Filters and Trade Ideas selectors */}
         <div className="space-y-3 mb-4 sm:mb-6 p-3 sm:p-4 bg-dark-800/50 rounded-xl border border-white/5">
@@ -350,7 +365,7 @@ export function Dashboard() {
             loading={tradeIdeasLoading}
           />
           <ChipSelector
-            label="Filters(Prob. Of Assignment)"
+            label="Assignment risk"
             items={allFilters}
             selectedId={selectedFilter?.id || null}
             onSelect={handleSelectFilter}
@@ -361,51 +376,46 @@ export function Dashboard() {
           />
         </div>
 
-        {/* Action row - stack on mobile, row on larger screens */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-          {/* Symbol selector - full width on mobile */}
-          <div className="relative w-full sm:w-auto">
-            <select
-              value={selectedSymbol}
-              onChange={(e) => setSelectedSymbol(e.target.value)}
-              disabled={isScreening || symbols.length === 0}
-              className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-4 py-3 sm:py-2.5 pr-10 text-base sm:text-sm text-gray-200 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all w-full sm:min-w-[140px] disabled:opacity-50 disabled:hover:bg-dark-800 cursor-pointer"
-            >
-              {symbols.map((symbol) => (
-                <option key={symbol} value={symbol}>
-                  {symbol}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={18}
-              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
-            />
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <button
+            onClick={handleScreenAll}
+            disabled={isScreening || symbols.length === 0 || !selectedFilter}
+            className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto py-3 sm:py-2.5 text-base sm:text-sm min-h-[48px] sm:min-h-0"
+          >
+            {isScreening ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Play size={18} />
+            )}
+            Screen All
+          </button>
 
-          {/* Buttons container - side by side on mobile */}
-          <div className="flex gap-3 sm:gap-4">
-            {/* Screen All button */}
-            <button
-              onClick={handleScreenAll}
-              disabled={isScreening || symbols.length === 0 || !selectedFilter}
-              className="btn-primary flex items-center justify-center gap-2 flex-1 sm:flex-none py-3 sm:py-2.5 text-base sm:text-sm min-h-[48px] sm:min-h-0"
-            >
-              {isScreening ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <Play size={18} />
-              )}
-              Screen All
-            </button>
-
-            {/* Screen Single button */}
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:pl-3 sm:border-l sm:border-white/10">
+            <div className="relative flex-1 sm:flex-none">
+              <select
+                value={selectedSymbol}
+                onChange={(e) => setSelectedSymbol(e.target.value)}
+                disabled={isScreening || symbols.length === 0}
+                aria-label="Stock to screen"
+                className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 py-2.5 pr-9 text-sm text-gray-300 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all w-full sm:min-w-[120px] disabled:opacity-50 disabled:hover:bg-dark-800 cursor-pointer"
+              >
+                {symbols.map((symbol) => (
+                  <option key={symbol} value={symbol}>
+                    {symbol}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={16}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500"
+              />
+            </div>
             <button
               onClick={handleScreenSingle}
               disabled={isScreening || !selectedSymbol || !selectedFilter}
-              className="btn-secondary flex items-center justify-center gap-2 flex-1 sm:flex-none py-3 sm:py-2.5 text-base sm:text-sm min-h-[48px] sm:min-h-0"
+              className="btn-secondary flex items-center justify-center gap-2 flex-1 sm:flex-none py-2.5 text-sm min-h-[44px] sm:min-h-0"
             >
-              Screen Stock
+              Screen {selectedSymbol || 'Stock'}
             </button>
           </div>
         </div>
@@ -418,7 +428,7 @@ export function Dashboard() {
         {/* Results section */}
         {Object.keys(results).length > 0 ? (
           <>
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-1.5">
               <h2 className="text-lg sm:text-xl font-semibold">
                 Results
                 {isScreening && (
@@ -434,11 +444,11 @@ export function Dashboard() {
                   <select
                     value={activeView}
                     onChange={(e) => setSelectedView(e.target.value)}
-                    className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm text-gray-200 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all min-w-[100px] sm:min-w-[120px] cursor-pointer"
+                    className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm text-gray-200 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all min-w-[140px] sm:min-w-[160px] cursor-pointer"
                   >
                     {viewOptions.map((option) => (
                       <option key={option} value={option}>
-                        {option}
+                        {resultsViewLabel(option)}
                       </option>
                     ))}
                   </select>
@@ -449,8 +459,13 @@ export function Dashboard() {
                 </div>
               )}
             </div>
+            {resultsCaption && (
+              <p className="text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4">
+                {resultsCaption}
+              </p>
+            )}
 
-            <ResultsTable data={currentResults} title={activeView} onAnalyze={handleAnalyze} />
+            <ResultsTable data={currentResults} title={resultsViewLabel(activeView)} onAnalyze={handleAnalyze} />
 
             {/* Yahoo fallback notice */}
             {usedYahooFallback && !isScreening && (
@@ -460,13 +475,16 @@ export function Dashboard() {
             )}
 
             {/* News section - only show when not screening */}
-            {activeView !== 'Summary' && !isScreening && (
+            {activeView !== SUMMARY_VIEW && !isScreening && (
               <NewsSection symbol={activeView} />
             )}
           </>
         ) : null}
 
       </main>
+
+      <Sidebar />
+      </div>
 
       {/* PWA Install Prompt */}
       <InstallPrompt />

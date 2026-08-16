@@ -15,7 +15,7 @@ NC='\033[0m'
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-echo -e "${GREEN}=== Put Options Screener - Development Mode ===${NC}"
+echo -e "${GREEN}=== PutYield - Development Mode ===${NC}"
 echo ""
 
 # Check for virtual environment

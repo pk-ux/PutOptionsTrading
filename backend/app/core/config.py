@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Application
-    APP_NAME: str = "Put Options Screener API"
+    APP_NAME: str = "PutYield API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     

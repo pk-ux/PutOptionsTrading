@@ -234,10 +234,8 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'put-options-screener',
-      // Only persist UI preferences
-      partialize: (state) => ({
-        sidebarOpen: state.sidebarOpen,
-      }),
+      partialize: () => ({}),
+      merge: (_persisted, current) => ({ ...current, sidebarOpen: false }),
     }
   )
 );

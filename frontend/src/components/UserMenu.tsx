@@ -4,16 +4,14 @@
  */
 
 import { useEffect, useState } from 'react';
-import { UserButton, useUser, useAuth } from '@clerk/clerk-react';
+import { UserButton, useAuth } from '@clerk/clerk-react';
 import { User, LogIn, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import apiClient from '@/api/client';
 
-// Check if Clerk is configured
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export function UserMenu() {
-  // If Clerk is not enabled, show dev mode indicator
   if (!CLERK_ENABLED) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-dark-800 rounded-lg border border-white/10">
@@ -28,10 +26,8 @@ export function UserMenu() {
 
 function AuthenticatedUserMenu() {
   const { isLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Check admin status when user is signed in
   useEffect(() => {
     if (isSignedIn) {
       apiClient.checkIsAdmin()
@@ -60,36 +56,28 @@ function AuthenticatedUserMenu() {
     );
   }
 
-  const emailDisplay = user?.primaryEmailAddress?.emailAddress || user?.firstName || 'User';
-
   return (
-    <div className="flex items-center gap-3">
-      {isAdmin ? (
-        <Link
-          to="/admin"
-          className="hidden sm:flex items-center gap-1.5 text-sm text-primary-400 hover:text-primary-300 transition-colors"
-          title="Admin Dashboard"
-        >
-          <Shield size={14} />
-          <span>{emailDisplay}</span>
-        </Link>
-      ) : (
-        <span className="text-sm text-gray-300 hidden sm:inline">
-          {emailDisplay}
-        </span>
+    <UserButton
+      afterSignOutUrl="/sign-in"
+      appearance={{
+        elements: {
+          avatarBox: 'w-9 h-9',
+          userButtonPopoverCard: 'bg-dark-800 border border-white/10',
+          userButtonPopoverActionButton: 'text-gray-300 hover:text-white hover:bg-dark-700',
+          userButtonPopoverActionButtonText: 'text-gray-300',
+          userButtonPopoverFooter: 'hidden',
+        },
+      }}
+    >
+      {isAdmin && (
+        <UserButton.MenuItems>
+          <UserButton.Link
+            label="Admin"
+            href="/admin"
+            labelIcon={<Shield size={16} />}
+          />
+        </UserButton.MenuItems>
       )}
-      <UserButton
-        afterSignOutUrl="/sign-in"
-        appearance={{
-          elements: {
-            avatarBox: 'w-9 h-9',
-            userButtonPopoverCard: 'bg-dark-800 border border-white/10',
-            userButtonPopoverActionButton: 'text-gray-300 hover:text-white hover:bg-dark-700',
-            userButtonPopoverActionButtonText: 'text-gray-300',
-            userButtonPopoverFooter: 'hidden',
-          },
-        }}
-      />
-    </div>
+    </UserButton>
   );
 }

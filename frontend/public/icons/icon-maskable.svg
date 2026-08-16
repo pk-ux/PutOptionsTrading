@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    <linearGradient id="py" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#667eea"/>
+      <stop offset="100%" stop-color="#764ba2"/>
     </linearGradient>
   </defs>
-  <!-- Maskable icons need safe zone padding (10% on each side) -->
-  <!-- Full background for maskable icon -->
-  <rect width="512" height="512" fill="url(#grad)"/>
-  <text x="256" y="320" font-size="220" font-family="Arial, sans-serif" font-weight="bold" text-anchor="middle" fill="white">P</text>
+  <rect width="512" height="512" fill="url(#py)"/>
+  <g transform="translate(256 256) scale(0.72) translate(-256 -256)">
+    <path d="M160 148 L256 276 L352 148" fill="none" stroke="#fff" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M256 256 V382" fill="none" stroke="#fff" stroke-width="58" stroke-linecap="round"/>
+  </g>
 </svg>

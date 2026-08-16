@@ -106,12 +106,12 @@ export function InstallPrompt() {
         {showIOSInstructions ? (
           // iOS Safari instructions
           <div className="flex items-start gap-3 sm:gap-4">
-            <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
-              <span className="text-white text-xl sm:text-2xl font-bold">P</span>
+            <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden">
+              <img src="/icons/icon-192.png" alt="" className="w-full h-full" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white font-medium text-sm sm:text-base mb-1">
-                Install Put Options Screener
+                Install PutYield
               </p>
               <p className="text-gray-400 text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
                 Tap <Share size={14} className="inline text-primary-400" /> then "Add to Home Screen"
@@ -129,12 +129,12 @@ export function InstallPrompt() {
           // Chrome/Edge/Android install prompt
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
-                <span className="text-white text-xl font-bold">P</span>
+              <div className="flex-shrink-0 w-12 h-12 rounded-xl overflow-hidden">
+                <img src="/icons/icon-192.png" alt="" className="w-full h-full" />
               </div>
               <div className="min-w-0">
                 <p className="text-white font-medium text-sm sm:text-base truncate">
-                  Install Put Options Screener
+                  Install PutYield
                 </p>
                 <p className="text-gray-400 text-xs sm:text-sm">
                   Quick access from your home screen
