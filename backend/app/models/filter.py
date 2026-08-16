@@ -9,6 +9,7 @@ from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Foreig
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
+from ..core.market_clock import to_market_iso
 
 
 class Filter(Base):
@@ -65,8 +66,8 @@ class Filter(Base):
             "min_open_interest": self.min_open_interest,
             "min_annualized_return": self.min_annualized_return,
             "max_assignment_probability": self.max_assignment_probability,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": to_market_iso(self.created_at),
+            "updated_at": to_market_iso(self.updated_at),
         }
     
     @staticmethod

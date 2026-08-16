@@ -16,6 +16,7 @@ import { ApiProviderCard } from '@/components/ApiProviderCard';
 import { MarketSettingsCard } from '@/components/MarketSettingsCard';
 import { AISettingsCard } from '@/components/AISettingsCard';
 import { BreakoutScannerCard } from '@/components/BreakoutScannerCard';
+import { MarketClockBadge } from '@/components/MarketClockBadge';
 import { useAuthSync } from '@/hooks/useAuthSync';
 import type { Filter, TradeIdea, FilterCreateRequest, TradeIdeaCreateRequest } from '@/types';
 
@@ -245,18 +246,21 @@ export function Admin() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Admin Dashboard</h1>
           <p className="text-gray-400 mt-1">Manage system filters and trade ideas</p>
         </div>
-        <button
-          onClick={() => navigate('/')}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <ArrowLeft size={18} />
-          Back to App
-        </button>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <MarketClockBadge />
+          <button
+            onClick={() => navigate('/')}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <ArrowLeft size={18} />
+            Back to App
+          </button>
+        </div>
       </div>
 
       {/* Breakout Scanner (Momentum Stocks) */}

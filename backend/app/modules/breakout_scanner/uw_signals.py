@@ -9,6 +9,8 @@ strings) and never raise: missing data yields neutral values.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ...core.market_clock import market_now, market_today
+
 
 def _clip01(x: float) -> float:
     if x != x:  # NaN
@@ -328,7 +330,7 @@ def seasonality_edge(monthly: List[Dict[str, Any]], month: Optional[int] = None)
     if not monthly:
         return 0.0
     if month is None:
-        month = datetime.utcnow().month
+        month = market_now().month
     for row in monthly:
         m = _get_any(row, "month")
         try:
@@ -352,5 +354,5 @@ def earnings_within(next_earnings_date: Any, days: int) -> bool:
         dt = datetime.strptime(str(next_earnings_date)[:10], "%Y-%m-%d")
     except (TypeError, ValueError):
         return False
-    delta = (dt - datetime.utcnow()).days
+    delta = (dt.date() - market_today()).days
     return 0 <= delta <= days

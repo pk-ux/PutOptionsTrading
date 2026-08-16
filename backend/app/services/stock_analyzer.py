@@ -4,7 +4,6 @@ Stock Analyzer Service - Orchestrates AI-powered stock analysis
 """
 
 from typing import Dict, Any, Optional, Union
-from datetime import datetime, timezone
 import logging
 
 from .data_fetcher import get_all_analysis_data, fetch_yahoo_analyst_ratings
@@ -15,6 +14,7 @@ from .llm import (
     LLMUnavailableError,
 )
 from ..core.api_provider import is_massive_active, is_alpaca_active
+from ..core.market_clock import market_now, to_market_iso
 
 logger = logging.getLogger(__name__)
 
@@ -383,9 +383,9 @@ async def analyze_stock(
     analysis = validate_analysis(raw_analysis, base_data)
     
     # 5. Add metadata
-    now = datetime.now(timezone.utc)
+    now = market_now()
     analysis['symbol'] = symbol
-    analysis['analysis_date'] = now.isoformat()
+    analysis['analysis_date'] = to_market_iso(now)
     analysis['data_sources'] = data_sources
     analysis['llm_provider'] = provider.name
     analysis['disclaimer'] = DISCLAIMER

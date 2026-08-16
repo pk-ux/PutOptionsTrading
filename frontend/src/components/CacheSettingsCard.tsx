@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Database, Save, RefreshCw } from 'lucide-react';
 import apiClient from '@/api/client';
 import type { CacheSettings } from '@/types';
+import { formatMarketTime } from '@/utils/marketTime';
 
 interface CacheSettingsCardProps {
   isReady: boolean;
@@ -118,7 +119,7 @@ export function CacheSettingsCard({ isReady }: CacheSettingsCardProps) {
         </div>
         {settings?.updated_at && (
           <span className="text-xs text-gray-500">
-            Last updated: {new Date(settings.updated_at).toLocaleString()}
+            Last updated: {formatMarketTime(settings.updated_at)}
           </span>
         )}
       </div>

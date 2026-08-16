@@ -10,6 +10,8 @@ import logging
 import yfinance as yf
 import numpy as np
 
+from ..core.market_clock import market_today
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,8 +56,8 @@ def fetch_yahoo_data(symbol: str) -> Dict[str, Any]:
         # Calculate days to earnings
         if earnings_date:
             try:
-                earnings_dt = datetime.strptime(earnings_date, '%Y-%m-%d')
-                days_to_earnings = (earnings_dt - datetime.now()).days
+                earnings_dt = datetime.strptime(earnings_date, '%Y-%m-%d').date()
+                days_to_earnings = (earnings_dt - market_today()).days
             except:
                 pass
         
@@ -787,9 +789,8 @@ def calculate_post_earnings_drift(price_history: List[Dict[str, Any]], yahoo_dat
         return result
     
     try:
-        earnings_dt = datetime.strptime(earnings_date_str, '%Y-%m-%d')
-        now = datetime.now()
-        days_since = (now - earnings_dt).days
+        earnings_dt = datetime.strptime(earnings_date_str, '%Y-%m-%d').date()
+        days_since = (market_today() - earnings_dt).days
         
         # Only interested if earnings were 0-14 days ago
         if days_since < 0 or days_since > 14:

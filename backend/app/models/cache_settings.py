@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, Boolean, DateTime
 
 from ..core.database import Base
+from ..core.market_clock import to_market_iso
 
 
 class CacheSettings(Base):
@@ -35,5 +36,5 @@ class CacheSettings(Base):
             "ttl_options_chain": self.ttl_options_chain,
             "ttl_news": self.ttl_news,
             "ttl_event_dates": self.ttl_event_dates,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": to_market_iso(self.updated_at),
         }

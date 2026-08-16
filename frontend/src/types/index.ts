@@ -163,6 +163,16 @@ export interface HealthResponse {
   auth: string;
 }
 
+// US equities session clock (Alpaca)
+export interface MarketClock {
+  timestamp: string;
+  is_open: boolean;
+  next_open: string | null;
+  next_close: string | null;
+  timezone: string;
+  source: 'alpaca' | 'fallback';
+}
+
 // Cache settings (admin only)
 export interface CacheSettings {
   cache_enabled: boolean;

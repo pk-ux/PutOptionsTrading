@@ -24,22 +24,26 @@ Design notes
 - **Manual runs always win.** A tick that finds a scan already running skips and
   retries on the next tick, so the scheduler never interrupts or duplicates a
   manual run triggered from the admin UI.
-
-Holidays are not modeled: there is no market calendar in this app, and a scan on
-a market holiday is harmless (the last daily bar is unchanged, so it reproduces
-the prior session's ranking).
+- **"Now" is market time.** Ticks use Alpaca's clock (America/New_York) rather
+  than the server's local timezone, so a 16:30 ET schedule fires at 16:30 ET
+  even if the host is in UTC or Pacific.
+- **Closed sessions are skipped.** Alpaca's market calendar drops weekends and
+  NYSE holidays from ``is_due`` / ``next_run_at`` when the calendar is available.
+  If Alpaca is unreachable the weekday mask still applies and holidays are not
+  extra-filtered (same as before).
 """
 
 import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Callable, Optional, Tuple
+from typing import Callable, FrozenSet, Optional, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import text
 
 from ...core.database import SessionLocal
+from ...core.market_clock import market_now_utc, trading_dates_between
 from ...models.breakout_scanner import (
     DEFAULT_AUTO_SCAN_TIME,
     DEFAULT_AUTO_SCAN_TIMEZONE,
@@ -130,11 +134,17 @@ def plan_from_settings(settings: BreakoutScannerSettings) -> SchedulePlan:
     )
 
 
-def is_due(plan: SchedulePlan, now_utc: datetime) -> bool:
+def is_due(
+    plan: SchedulePlan,
+    now_utc: datetime,
+    trading_dates: Optional[FrozenSet[str]] = None,
+) -> bool:
     """True when a scan should start right now.
 
     Due means: today is a selected weekday, the scheduled minute has passed, we
     are still inside the catch-up window, and today's slot has not been claimed.
+    When ``trading_dates`` is provided (Alpaca calendar), closed sessions are
+    skipped even if the weekday is selected.
     """
     if not plan.active:
         return False
@@ -142,25 +152,34 @@ def is_due(plan: SchedulePlan, now_utc: datetime) -> bool:
     today = now_local.date()
     if today.weekday() not in plan.days:
         return False
+    if trading_dates is not None and today.isoformat() not in trading_dates:
+        return False
     if plan.last_run_date == today.isoformat():
         return False
     fire = plan.fire_time_on(today)
     return fire <= now_local < fire + CATCHUP_WINDOW
 
 
-def next_run_at(plan: SchedulePlan, now_utc: datetime) -> Optional[datetime]:
+def next_run_at(
+    plan: SchedulePlan,
+    now_utc: datetime,
+    trading_dates: Optional[FrozenSet[str]] = None,
+) -> Optional[datetime]:
     """The next UTC moment the scan will fire, or None if it never will.
 
     Used for the "Next run" readout in the admin UI, so it has to agree with
-    `is_due`: it skips days already run and slots whose catch-up window closed.
+    `is_due`: it skips days already run, slots whose catch-up window closed,
+    and (when ``trading_dates`` is provided) closed market sessions.
     """
     if not plan.active:
         return None
     now_local = now_utc.astimezone(plan.tz)
-    # 8 days covers a full week plus today, so any non-empty day set resolves.
-    for offset in range(8):
+    # 16 days covers a full week plus a long holiday stretch (Thanksgiving).
+    for offset in range(16):
         day = now_local.date() + timedelta(days=offset)
         if day.weekday() not in plan.days:
+            continue
+        if trading_dates is not None and day.isoformat() not in trading_dates:
             continue
         if plan.last_run_date == day.isoformat():
             continue
@@ -245,7 +264,7 @@ class AutoScanScheduler:
         await asyncio.sleep(self._startup_delay)
         while True:
             try:
-                await self.tick(datetime.now(timezone.utc))
+                await self.tick(market_now_utc())
             except asyncio.CancelledError:
                 raise
             except Exception:  # never let one bad tick kill the schedule
@@ -268,7 +287,9 @@ class AutoScanScheduler:
         try:
             settings = get_or_create_settings(db)
             plan = plan_from_settings(settings)
-            if not is_due(plan, now_utc):
+            today = now_utc.astimezone(plan.tz).date()
+            trading_dates = trading_dates_between(today, today)
+            if not is_due(plan, now_utc, trading_dates):
                 return None
 
             # A manual run in flight owns the scanner; retry on the next tick

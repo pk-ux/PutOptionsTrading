@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import apiClient from '@/api/client';
 import type { StockAnalysis, AnalysisError } from '@/types';
+import { formatMarketTime } from '@/utils/marketTime';
 
 interface StockAnalysisPanelProps {
   symbol: string;
@@ -993,7 +994,7 @@ export function StockAnalysisPanel({ symbol, isOpen, onClose }: StockAnalysisPan
                 <div className="flex items-center gap-1">
                   <Clock size={12} />
                   <span>
-                    Analyzed: {new Date(analysis.analysis_date).toLocaleString()}
+                    Analyzed: {formatMarketTime(analysis.analysis_date)}
                     {analysis.cached_at && ' (cached)'}
                   </span>
                 </div>

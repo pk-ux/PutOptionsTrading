@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 
 from ..core.database import Base
+from ..core.market_clock import to_market_iso
 
 
 class ApiProviderSettings(Base):
@@ -33,5 +34,5 @@ class ApiProviderSettings(Base):
         return {
             "active_provider": self.active_provider,
             "use_midpoint_pricing": self.use_midpoint_pricing,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": to_market_iso(self.updated_at),
         }

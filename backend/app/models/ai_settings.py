@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, Boolean, String, DateTime
 
 from ..core.database import Base
+from ..core.market_clock import to_market_iso
 
 
 class AISettings(Base):
@@ -33,5 +34,5 @@ class AISettings(Base):
             "active_provider": self.active_provider,
             "cache_enabled": self.cache_enabled,
             "cache_ttl_seconds": self.cache_ttl_seconds,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": to_market_iso(self.updated_at),
         }

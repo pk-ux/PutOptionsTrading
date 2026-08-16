@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.deps import get_current_admin
 from ...core.config import get_settings
+from ...core.market_clock import to_market_iso
 from ...models import User, Filter, TradeIdea, CacheSettings, ApiProviderSettings, MarketSettings
 from ...schemas.filter import FilterCreate, FilterUpdate, FilterResponse
 from ...schemas.trade_idea import TradeIdeaCreate, TradeIdeaUpdate, TradeIdeaResponse
@@ -436,7 +437,7 @@ async def get_api_provider_settings(
         use_midpoint_pricing=settings.use_midpoint_pricing,
         massive_api_configured=massive_configured,
         alpaca_api_configured=alpaca_configured,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+        updated_at=to_market_iso(settings.updated_at),
     )
 
 
@@ -481,7 +482,7 @@ async def update_api_provider_settings(
         use_midpoint_pricing=settings.use_midpoint_pricing,
         massive_api_configured=massive_configured,
         alpaca_api_configured=alpaca_configured,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+        updated_at=to_market_iso(settings.updated_at),
     )
 
 
@@ -537,7 +538,7 @@ async def get_cache_settings(
         ttl_options_chain=settings.ttl_options_chain,
         ttl_news=settings.ttl_news,
         ttl_event_dates=settings.ttl_event_dates if hasattr(settings, 'ttl_event_dates') else 604800,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+        updated_at=to_market_iso(settings.updated_at),
     )
 
 
@@ -569,7 +570,7 @@ async def update_cache_settings(
         ttl_options_chain=settings.ttl_options_chain,
         ttl_news=settings.ttl_news,
         ttl_event_dates=settings.ttl_event_dates if hasattr(settings, 'ttl_event_dates') else 604800,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+        updated_at=to_market_iso(settings.updated_at),
     )
 
 
@@ -616,7 +617,7 @@ async def get_market_settings(
     return MarketSettingsResponse(
         risk_free_rate=settings.risk_free_rate,
         risk_free_rate_percent=settings.risk_free_rate * 100,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+        updated_at=to_market_iso(settings.updated_at),
     )
 
 
@@ -654,7 +655,7 @@ async def update_market_settings(
     return MarketSettingsResponse(
         risk_free_rate=settings.risk_free_rate,
         risk_free_rate_percent=settings.risk_free_rate * 100,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
+        updated_at=to_market_iso(settings.updated_at),
     )
 
 

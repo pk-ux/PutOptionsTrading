@@ -12,6 +12,7 @@ import yfinance as yf
 from .massive_api_client import get_massive_client
 from .alpaca_api_client import get_alpaca_client
 from ..core.api_provider import get_active_provider, get_use_midpoint_pricing
+from ..core.market_clock import market_today
 
 
 def fetch_alpaca_volumes(contract_symbols: List[str]) -> Dict[str, int]:
@@ -252,7 +253,7 @@ def get_options_chain_yahoo(symbol: str, config: dict) -> pd.DataFrame:
         
         # Get expiry dates within DTE range
         expiry_dates = [date for date in stock.options
-                       if min_dte <= (pd.to_datetime(date) - datetime.now()).days <= max_dte]
+                       if min_dte <= (pd.to_datetime(date).date() - market_today()).days <= max_dte]
         
         all_options = pd.DataFrame()
         
@@ -264,7 +265,7 @@ def get_options_chain_yahoo(symbol: str, config: dict) -> pd.DataFrame:
                 chain = stock.option_chain(date)
                 puts = chain.puts.copy()
                 puts['expiry'] = date
-                puts['dte'] = int((pd.to_datetime(date) - datetime.now()).days)
+                puts['dte'] = int((pd.to_datetime(date).date() - market_today()).days)
                 puts['symbol'] = symbol
                 
                 # Calculate Greeks using shared calculator if not available
@@ -385,7 +386,7 @@ def calculate_metrics(options_chain: pd.DataFrame, current_price: float) -> pd.D
     options_chain['out_of_the_money'] = options_chain['strike'] < current_price
     
     # Get current date
-    today = datetime.now().date()
+    today = market_today()
     
     # Calculate days to expiration (DTE)
     options_chain['calendar_days'] = options_chain['expiry'].apply(

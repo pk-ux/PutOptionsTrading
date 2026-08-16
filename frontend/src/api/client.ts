@@ -11,6 +11,7 @@ import type {
   ScreenResponse, 
   NewsResponse,
   HealthResponse,
+  MarketClock,
   Filter,
   FilterListResponse,
   FilterCreateRequest,
@@ -85,6 +86,11 @@ export const apiClient = {
   // Health check
   async getHealth(): Promise<HealthResponse> {
     const response = await api.get('/health');
+    return response.data;
+  },
+
+  async getMarketClock(): Promise<MarketClock> {
+    const response = await api.get('/api/v1/market-clock');
     return response.data;
   },
 

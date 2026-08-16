@@ -606,6 +606,15 @@ class TestIsDue:
     def test_auto_disabled_is_never_due(self):
         assert SCH.is_due(plan(auto_scan_enabled=False), et(2026, 8, 17, 17, 0)) is False
 
+    def test_not_due_on_a_closed_session_when_calendar_is_known(self):
+        # Labor Day 2026 is Monday; weekday mask would otherwise allow it.
+        assert SCH.is_due(plan(), et(2026, 9, 7, 16, 30), frozenset()) is False
+
+    def test_due_when_calendar_lists_today_as_a_session(self):
+        assert SCH.is_due(
+            plan(), et(2026, 8, 17, 16, 30), frozenset({"2026-08-17"})
+        ) is True
+
     def test_master_switch_off_is_never_due(self):
         assert SCH.is_due(plan(enabled=False), et(2026, 8, 17, 17, 0)) is False
 
@@ -630,6 +639,15 @@ class TestNextRunAt:
 
     def test_next_run_is_none_when_auto_scan_is_off(self):
         assert SCH.next_run_at(plan(auto_scan_enabled=False), et(2026, 8, 17, 9, 0)) is None
+
+    def test_next_run_skips_a_holiday_when_calendar_is_known(self):
+        # Labor Day Monday 2026-09-07 is closed; next session is Tuesday.
+        nxt = SCH.next_run_at(
+            plan(),
+            et(2026, 9, 7, 9, 0),
+            frozenset({"2026-09-08", "2026-09-09"}),
+        )
+        assert nxt == et(2026, 9, 8, 16, 30)
 
     def test_next_run_survives_a_dst_boundary(self):
         # US DST ends Sun 2026-11-01; the slot stays at 16:30 local either side.

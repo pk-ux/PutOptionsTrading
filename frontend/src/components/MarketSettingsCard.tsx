@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, Save, RefreshCw, ExternalLink } from 'lucide-react';
 import apiClient from '@/api/client';
 import type { MarketSettings } from '@/types';
+import { formatMarketTime } from '@/utils/marketTime';
 
 interface MarketSettingsCardProps {
   isReady: boolean;
@@ -95,7 +96,7 @@ export function MarketSettingsCard({ isReady }: MarketSettingsCardProps) {
         </div>
         {settings?.updated_at && (
           <span className="text-xs text-gray-500">
-            Last updated: {new Date(settings.updated_at).toLocaleString()}
+            Last updated: {formatMarketTime(settings.updated_at)}
           </span>
         )}
       </div>

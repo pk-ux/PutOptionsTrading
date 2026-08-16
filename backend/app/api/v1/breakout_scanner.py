@@ -7,7 +7,7 @@ Admin-only endpoints to manage the scan universe + config, trigger a scan
 """
 
 import re
-from datetime import datetime, timezone
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ...core.config import get_settings
 from ...core.database import get_db
 from ...core.deps import get_current_admin
+from ...core.market_clock import market_now_utc, to_market_iso, trading_dates_between
 from ...models import BreakoutScannerSettings, BreakoutScanResult, User
 from ...modules.breakout_scanner.integration import (
     ensure_schema,
@@ -143,7 +144,10 @@ def _settings_response(settings: BreakoutScannerSettings) -> BreakoutSettingsRes
         config.weights = {**config.weights, **overrides}
 
     plan = plan_from_settings(settings)
-    next_run = next_run_at(plan, datetime.now(timezone.utc))
+    now = market_now_utc()
+    local_day = now.astimezone(plan.tz).date()
+    trading_dates = trading_dates_between(local_day, local_day + timedelta(days=16))
+    next_run = next_run_at(plan, now, trading_dates)
 
     return BreakoutSettingsResponse(
         **data,
@@ -151,7 +155,7 @@ def _settings_response(settings: BreakoutScannerSettings) -> BreakoutSettingsRes
             k: round(v, 4) for k, v in config.normalized_weights().items()
         },
         auto_scan_summary=describe_schedule(plan),
-        next_auto_run_at=next_run.isoformat() if next_run else None,
+        next_auto_run_at=to_market_iso(next_run),
         unusual_whales_configured=bool(get_settings().UNUSUAL_WHALES_API_KEY),
     )
 
@@ -166,7 +170,7 @@ def _rearm_if_slot_still_ahead(settings: BreakoutScannerSettings) -> None:
     plan = plan_from_settings(settings)
     if not plan.active:
         return
-    now_local = datetime.now(timezone.utc).astimezone(plan.tz)
+    now_local = market_now_utc().astimezone(plan.tz)
     today = now_local.date()
     if today.weekday() in plan.days and now_local < plan.fire_time_on(today):
         settings.last_auto_run_date = None

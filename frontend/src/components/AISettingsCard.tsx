@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Bot, Save, RefreshCw, CheckCircle, XCircle, Sparkles } from 'lucide-react';
 import apiClient from '@/api/client';
 import type { AISettings } from '@/types';
+import { formatMarketTime } from '@/utils/marketTime';
 
 interface AISettingsCardProps {
   isReady: boolean;
@@ -134,7 +135,7 @@ export function AISettingsCard({ isReady }: AISettingsCardProps) {
         </div>
         {settings?.updated_at && (
           <span className="text-xs text-gray-500">
-            Last updated: {new Date(settings.updated_at).toLocaleString()}
+            Last updated: {formatMarketTime(settings.updated_at)}
           </span>
         )}
       </div>

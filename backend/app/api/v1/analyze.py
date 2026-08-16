@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
+from ...core.market_clock import to_market_iso
 from ...models import AISettings, AnalysisCache
 from ...schemas.analysis import (
     StockAnalysis,
@@ -47,8 +48,8 @@ def get_cached_analysis(db: Session, symbol: str) -> dict | None:
     if cached:
         try:
             result = json.loads(cached.analysis_json)
-            result['cached_at'] = cached.created_at.isoformat()
-            result['expires_at'] = cached.expires_at.isoformat()
+            result['cached_at'] = to_market_iso(cached.created_at)
+            result['expires_at'] = to_market_iso(cached.expires_at)
             print(f"[Analysis Cache HIT] {symbol}")
             return result
         except json.JSONDecodeError:
@@ -164,7 +165,7 @@ async def get_ai_settings_endpoint(db: Session = Depends(get_db)):
         cache_enabled=settings.cache_enabled,
         cache_ttl_seconds=settings.cache_ttl_seconds,
         available_providers=providers,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None
+        updated_at=to_market_iso(settings.updated_at)
     )
 
 
@@ -200,5 +201,5 @@ async def update_ai_settings_endpoint(
         cache_enabled=settings.cache_enabled,
         cache_ttl_seconds=settings.cache_ttl_seconds,
         available_providers=providers,
-        updated_at=settings.updated_at.isoformat() if settings.updated_at else None
+        updated_at=to_market_iso(settings.updated_at)
     )

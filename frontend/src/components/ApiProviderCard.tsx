@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Cloud, Save, RefreshCw, CheckCircle, XCircle, Zap } from 'lucide-react';
 import apiClient from '@/api/client';
 import type { ApiProviderSettings } from '@/types';
+import { formatMarketTime } from '@/utils/marketTime';
 
 interface ApiProviderCardProps {
   isReady: boolean;
@@ -98,7 +99,7 @@ export function ApiProviderCard({ isReady }: ApiProviderCardProps) {
         </div>
         {settings?.updated_at && (
           <span className="text-xs text-gray-500">
-            Last updated: {new Date(settings.updated_at).toLocaleString()}
+            Last updated: {formatMarketTime(settings.updated_at)}
           </span>
         )}
       </div>

@@ -4,8 +4,10 @@ Filter-related Pydantic schemas
 """
 
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from datetime import datetime
+
+from ..core.market_clock import to_market_iso
 
 
 class FilterBase(BaseModel):
@@ -51,6 +53,10 @@ class FilterResponse(BaseModel):
     max_assignment_probability: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    @field_serializer("created_at", "updated_at")
+    def _market_ts(self, value: Optional[datetime]) -> Optional[str]:
+        return to_market_iso(value)
     
     class Config:
         from_attributes = True

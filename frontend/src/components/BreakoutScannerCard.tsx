@@ -30,6 +30,7 @@ import type {
   BreakoutScannerSettings,
   BreakoutScanResultItem,
 } from '@/types';
+import { formatMarketTime } from '@/utils/marketTime';
 
 interface BreakoutScannerCardProps {
   isReady: boolean;
@@ -959,7 +960,8 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
               ) : (
                 <p className="text-xs text-gray-500">
                   Default 16:30 America/New_York is 30 minutes after the US equities
-                  close, once the daily bar has settled. Market holidays are not skipped.
+                  close, once the daily bar has settled. NYSE holidays are skipped
+                  using Alpaca's market calendar.
                 </p>
               )}
 
@@ -967,7 +969,7 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
                 <div className="flex items-center gap-1.5 text-xs text-gray-400">
                   <CalendarClock size={12} className="text-primary-400 shrink-0" />
                   <span>
-                    Next run {new Date(settings.next_auto_run_at).toLocaleString()}
+                    Next run {formatMarketTime(settings.next_auto_run_at)}
                     {(() => {
                       const countdown = formatCountdown(settings.next_auto_run_at);
                       return countdown ? <span className="text-gray-600"> · {countdown}</span> : null;
@@ -977,7 +979,7 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
               )}
               {settings?.last_auto_run_at && (
                 <p className="text-xs text-gray-600">
-                  Last automatic run {new Date(settings.last_auto_run_at).toLocaleString()}
+                  Last automatic run {formatMarketTime(settings.last_auto_run_at)}
                 </p>
               )}
               {!enabled && (
@@ -1046,7 +1048,7 @@ export function BreakoutScannerCard({ isReady, onScanComplete }: BreakoutScanner
             <span className="flex-1">
               {settings.last_run_message}
               {settings.last_run_at && (
-                <span className="text-gray-600"> · {new Date(settings.last_run_at).toLocaleString()}</span>
+                <span className="text-gray-600"> · {formatMarketTime(settings.last_run_at)}</span>
               )}
             </span>
             {canReset && (

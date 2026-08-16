@@ -13,6 +13,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 
+from ..core.market_clock import to_market_iso
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -152,14 +154,12 @@ class BreakoutScannerSettings(Base):
             "auto_scan_time": self.auto_scan_time or DEFAULT_AUTO_SCAN_TIME,
             "auto_scan_timezone": self.auto_scan_timezone or DEFAULT_AUTO_SCAN_TIMEZONE,
             "auto_scan_days": self.get_auto_scan_days(),
-            "last_auto_run_at": (
-                self.last_auto_run_at.isoformat() if self.last_auto_run_at else None
-            ),
-            "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
+            "last_auto_run_at": to_market_iso(self.last_auto_run_at),
+            "last_run_at": to_market_iso(self.last_run_at),
             "last_run_status": self.last_run_status,
             "last_run_message": self.last_run_message,
             "market_context": self.get_market_context(),
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_at": to_market_iso(self.updated_at),
         }
 
 
@@ -232,5 +232,5 @@ class BreakoutScanResult(Base):
             "earnings_flag": self.earnings_flag,
             "suggested_put_strike": self.suggested_put_strike,
             "factor_breakdown": breakdown,
-            "run_at": self.run_at.isoformat() if self.run_at else None,
+            "run_at": to_market_iso(self.run_at),
         }

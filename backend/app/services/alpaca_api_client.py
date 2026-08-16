@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 
 from ..core.config import get_settings
+from ..core.market_clock import market_today
 
 
 class AlpacaAPIClient:
@@ -500,7 +501,7 @@ class AlpacaAPIClient:
             min_dte = config['options_strategy'].get('min_dte', 0)
             
             # Calculate date range for expiration filtering
-            today = datetime.now().date()
+            today = market_today()
             min_exp_date = today + timedelta(days=min_dte)
             max_exp_date = today + timedelta(days=max_dte)
             

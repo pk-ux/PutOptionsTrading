@@ -13,12 +13,14 @@ from .trade_ideas import router as trade_ideas_router
 from .admin import router as admin_router
 from .analyze import router as analyze_router
 from .breakout_scanner import router as breakout_scanner_router
+from .market import router as market_router
 
 # Create main v1 router
 api_router = APIRouter()
 
 # Include sub-routers
 api_router.include_router(health_router, tags=["health"])
+api_router.include_router(market_router, prefix="/api/v1", tags=["market"])
 api_router.include_router(settings_router, prefix="/api/v1", tags=["settings"])
 api_router.include_router(screen_router, prefix="/api/v1", tags=["screening"])
 api_router.include_router(filters_router, prefix="/api/v1", tags=["filters"])

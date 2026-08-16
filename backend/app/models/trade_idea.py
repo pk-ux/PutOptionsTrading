@@ -9,6 +9,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Inde
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
+from ..core.market_clock import to_market_iso
 
 
 class TradeIdea(Base):
@@ -67,6 +68,6 @@ class TradeIdea(Base):
             "display_order": self.display_order,
             "user_id": self.user_id,
             "symbols": self.get_symbols_list(),
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": to_market_iso(self.created_at),
+            "updated_at": to_market_iso(self.updated_at),
         }
