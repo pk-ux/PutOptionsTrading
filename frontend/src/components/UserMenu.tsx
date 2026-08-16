@@ -63,8 +63,11 @@ function AuthenticatedUserMenu() {
         elements: {
           avatarBox: 'w-9 h-9',
           userButtonPopoverCard: 'bg-dark-800 border border-white/10',
-          userButtonPopoverActionButton: 'text-gray-300 hover:text-white hover:bg-dark-700',
-          userButtonPopoverActionButtonText: 'text-gray-300',
+          userButtonPopoverActionButton: 'text-gray-200 hover:text-white hover:bg-dark-700',
+          userButtonPopoverActionButtonText: '!text-gray-200',
+          userButtonPopoverActionButtonIcon: '!text-gray-200',
+          userButtonPopoverCustomItemButton: '!text-gray-200 hover:!text-white hover:bg-dark-700',
+          userButtonPopoverCustomItemButtonText: '!text-gray-200',
           userButtonPopoverFooter: 'hidden',
         },
       }}
@@ -74,7 +77,7 @@ function AuthenticatedUserMenu() {
           <UserButton.Link
             label="Admin"
             href="/admin"
-            labelIcon={<Shield size={16} />}
+            labelIcon={<Shield size={16} className="text-gray-200" />}
           />
         </UserButton.MenuItems>
       )}
