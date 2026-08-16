@@ -178,7 +178,7 @@ export function ChipSelector<T extends { id: string; name: string; is_system: bo
                 "
               >
                 <Plus size={16} />
-                <span>New</span>
+                <span>Build your own</span>
               </button>
             )}
           </>

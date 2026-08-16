@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Play, Loader2, ChevronDown, Menu, X } from 'lucide-react';
+import { Play, Loader2, ChevronDown, BookOpen, X } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import apiClient from '@/api/client';
 import { Sidebar } from '@/components/Sidebar';
@@ -334,15 +334,17 @@ export function Dashboard() {
             <UserMenu />
             <button
               onClick={toggleSidebar}
-              className="p-2.5 sm:p-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+              className="inline-flex items-center gap-2 p-2.5 sm:px-3 sm:py-2 bg-dark-800 hover:bg-dark-700 rounded-lg transition-colors text-gray-400 hover:text-white"
               title={sidebarOpen ? 'Close guide' : 'Open guide'}
+              aria-label={sidebarOpen ? 'Close guide' : 'Open guide'}
               aria-expanded={sidebarOpen}
             >
               {sidebarOpen ? (
                 <X size={22} className="sm:w-5 sm:h-5" />
               ) : (
-                <Menu size={22} className="sm:w-5 sm:h-5" />
+                <BookOpen size={22} className="sm:w-5 sm:h-5" />
               )}
+              <span className="hidden sm:inline text-sm font-medium">Guide</span>
             </button>
           </div>
         </div>
