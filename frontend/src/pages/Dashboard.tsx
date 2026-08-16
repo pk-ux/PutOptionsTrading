@@ -30,7 +30,6 @@ export function Dashboard() {
   const {
     results,
     setResults,
-    appendResult,
     selectedSymbol,
     setSelectedSymbol,
     selectedView,
@@ -166,9 +165,13 @@ export function Dashboard() {
     }
   };
 
-  // Summary: one highest-return contract per ticker, tickers ranked by that return.
-  const buildSummary = useCallback((currentResults: Record<string, OptionResult[]>) => {
-    const ranked = buildRankedResults(currentResults);
+  // Publish completed tickers to the table. sortByReturn is false while a
+  // Screen All run is in progress so rows appear immediately; true at the end.
+  const publishResults = useCallback((
+    currentResults: Record<string, OptionResult[]>,
+    sortByReturn: boolean,
+  ) => {
+    const ranked = buildRankedResults(currentResults, sortByReturn);
     const tickerViews = Object.keys(ranked).filter((key) => key !== 'Summary');
 
     if (tickerViews.length === 0) {
@@ -176,7 +179,10 @@ export function Dashboard() {
     }
 
     setResults(ranked);
-    setSelectedView(ranked.Summary ? 'Summary' : tickerViews[0]);
+    const currentView = useAppStore.getState().selectedView;
+    if (!ranked[currentView]) {
+      setSelectedView(ranked.Summary ? 'Summary' : tickerViews[0]);
+    }
   }, [setResults, setSelectedView]);
 
   // Get symbols from selected trade idea
@@ -187,6 +193,7 @@ export function Dashboard() {
     if (!selectedFilter || !selectedTradeIdea || symbols.length === 0) return;
 
     startScreening(symbols.length);
+    setSelectedView('Summary');
     let yahooUsed = false;
     const allResults: Record<string, OptionResult[]> = {};
 
@@ -216,7 +223,7 @@ export function Dashboard() {
         const symbolResults = response.results[symbol] || [];
         if (symbolResults.length > 0) {
           allResults[symbol] = symbolResults;
-          appendResult(symbol, symbolResults);
+          publishResults(allResults, false);
         }
       } catch (error) {
         console.error(`Error screening ${symbol}:`, error);
@@ -228,18 +235,18 @@ export function Dashboard() {
 
     setUsedYahooFallback(yahooUsed);
     stopScreening();
-    buildSummary(allResults);
+    publishResults(allResults, true);
   }, [
     selectedFilter,
     selectedTradeIdea,
     symbols,
     startScreening,
     updateScreeningSymbol,
-    appendResult,
     incrementProgress,
     stopScreening,
     setUsedYahooFallback,
-    buildSummary,
+    setSelectedView,
+    publishResults,
   ]);
 
   // Single symbol screening (no progress needed)
@@ -290,7 +297,10 @@ export function Dashboard() {
     viewOptions.unshift('Summary');
   }
 
-  const currentResults = results[selectedView] || [];
+  const activeView = viewOptions.includes(selectedView)
+    ? selectedView
+    : (viewOptions[0] || selectedView);
+  const currentResults = results[activeView] || [];
 
   return (
     <div className="flex h-screen">
@@ -422,7 +432,7 @@ export function Dashboard() {
               {viewOptions.length > 1 && (
                 <div className="relative">
                   <select
-                    value={selectedView}
+                    value={activeView}
                     onChange={(e) => setSelectedView(e.target.value)}
                     className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm text-gray-200 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all min-w-[100px] sm:min-w-[120px] cursor-pointer"
                   >
@@ -440,7 +450,7 @@ export function Dashboard() {
               )}
             </div>
 
-            <ResultsTable data={currentResults} title={selectedView} onAnalyze={handleAnalyze} />
+            <ResultsTable data={currentResults} title={activeView} onAnalyze={handleAnalyze} />
 
             {/* Yahoo fallback notice */}
             {usedYahooFallback && !isScreening && (
@@ -450,8 +460,8 @@ export function Dashboard() {
             )}
 
             {/* News section - only show when not screening */}
-            {selectedView !== 'Summary' && !isScreening && (
-              <NewsSection symbol={selectedView} />
+            {activeView !== 'Summary' && !isScreening && (
+              <NewsSection symbol={activeView} />
             )}
           </>
         ) : null}

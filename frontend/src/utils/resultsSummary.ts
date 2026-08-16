@@ -12,28 +12,35 @@ export function pickBestResult(rows: OptionResult[]): OptionResult {
 }
 
 /**
- * Rank tickers by their highest annualized return and produce:
- * - ticker views in that order
- * - a Summary list with the single best contract per ticker
+ * Build ticker views plus a Summary row (best contract per ticker).
+ * Pass sortByReturn=false while a Screen All run is still in progress so
+ * completed tickers appear immediately in completion order. Sort only when
+ * the run finishes.
  */
 export function buildRankedResults(
-  currentResults: Record<string, OptionResult[]>
+  currentResults: Record<string, OptionResult[]>,
+  sortByReturn = true,
 ): Record<string, OptionResult[]> {
-  const ranked = Object.entries(currentResults)
-    .filter(([, rows]) => rows && rows.length > 0)
+  let ranked = Object.entries(currentResults)
+    .filter(([symbol, rows]) => symbol !== 'Summary' && rows && rows.length > 0)
     .map(([symbol, rows]) => ({
       symbol,
       rows,
       best: pickBestResult(rows),
-    }))
-    .sort((a, b) => b.best.annualized_return - a.best.annualized_return);
+    }));
+
+  if (sortByReturn) {
+    ranked = ranked.sort((a, b) => b.best.annualized_return - a.best.annualized_return);
+  }
 
   const ordered: Record<string, OptionResult[]> = {};
   for (const item of ranked) {
     ordered[item.symbol] = item.rows;
   }
 
-  if (ranked.length > 1) {
+  // Always show Summary while results are streaming in. After the final sort,
+  // keep Summary only when more than one ticker qualified.
+  if (ranked.length > 1 || (!sortByReturn && ranked.length > 0)) {
     ordered.Summary = ranked.map((item) => item.best);
   }
 
