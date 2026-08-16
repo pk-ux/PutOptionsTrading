@@ -148,7 +148,7 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
           <span className="text-white font-medium">{formatCurrency(premium)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Prob:</span>
+          <span className="text-gray-500">Assign Risk:</span>
           <span className="text-white font-medium">{formatPercent(row.prob_assign)}</span>
         </div>
         <div className="flex justify-between">
@@ -234,7 +234,7 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             <th>Premium</th>
             <th title="Annualized return">Ann. return</th>
             <th>Daily Decay</th>
-            <th>Prob Assign</th>
+            <th>Assign Risk</th>
             <th>Expiry</th>
             <th>DTE</th>
             <th>Vol</th>
