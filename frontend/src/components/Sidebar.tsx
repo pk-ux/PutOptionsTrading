@@ -137,6 +137,10 @@ export function Sidebar() {
               Simple moving averages. Green means price is above that average (uptrend);
               red means below. Puts under a rising trend often have more cushion.
             </GuideTerm>
+            <GuideTerm term="EMA 9 / 21">
+              Exponential moving averages that react faster than SMAs. Price above both
+              favors short-term strength; a cross under can warn of a dip toward your strike.
+            </GuideTerm>
             <GuideTerm term="RSI">
               14-day relative strength. Near 70 can be stretched to the upside; near 30 can
               be washed out. Context for whether a dip to your strike is likely.

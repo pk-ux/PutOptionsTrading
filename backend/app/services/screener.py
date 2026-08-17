@@ -288,6 +288,8 @@ def _screen_single_symbol(symbol: str, config: dict) -> Tuple[List[Dict[str, Any
         row['sma_20'] = indicators.get('sma_20')
         row['sma_50'] = indicators.get('sma_50')
         row['sma_200'] = indicators.get('sma_200')
+        row['ema_9'] = indicators.get('ema_9')
+        row['ema_21'] = indicators.get('ema_21')
         row['rsi_14'] = indicators.get('rsi_14')
     
     return results, used_yahoo

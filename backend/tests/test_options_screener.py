@@ -73,6 +73,9 @@ def test_compute_sma_rsi_from_closes():
     assert result["sma_20"] == round(sum(range(181, 201)) / 20, 2)
     assert result["sma_50"] == round(sum(range(151, 201)) / 50, 2)
     assert result["sma_200"] == round(sum(range(1, 201)) / 200, 2)
+    assert result["ema_9"] is not None
+    assert result["ema_21"] is not None
+    assert result["ema_9"] > result["ema_21"]  # rising series: faster EMA is higher
     assert result["rsi_14"] is not None
     assert 50 < result["rsi_14"] <= 100
 
@@ -84,6 +87,8 @@ def test_compute_sma_rsi_handles_short_history():
     assert result["sma_20"] is None
     assert result["sma_50"] is None
     assert result["sma_200"] is None
+    assert result["ema_9"] is not None
+    assert result["ema_21"] is None
     assert result["rsi_14"] is None
 
 

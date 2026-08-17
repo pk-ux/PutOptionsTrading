@@ -214,6 +214,14 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
             {formatSma(row.sma_200, row.current_price)}
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-500">EMA 9:</span>
+            {formatSma(row.ema_9, row.current_price)}
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">EMA 21:</span>
+            {formatSma(row.ema_21, row.current_price)}
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-500">RSI:</span>
             {formatRsi(row.rsi_14)}
           </div>
@@ -255,6 +263,8 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
             <th title="20-day simple moving average">SMA 20</th>
             <th title="50-day simple moving average">SMA 50</th>
             <th title="200-day simple moving average">SMA 200</th>
+            <th title="9-day exponential moving average">EMA 9</th>
+            <th title="21-day exponential moving average">EMA 21</th>
             <th title="14-day relative strength index">RSI</th>
             <th>Vol</th>
             <th>OI</th>
@@ -309,6 +319,8 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
                 <td>{formatSma(row.sma_20, row.current_price)}</td>
                 <td>{formatSma(row.sma_50, row.current_price)}</td>
                 <td>{formatSma(row.sma_200, row.current_price)}</td>
+                <td>{formatSma(row.ema_9, row.current_price)}</td>
+                <td>{formatSma(row.ema_21, row.current_price)}</td>
                 <td>{formatRsi(row.rsi_14)}</td>
                 <td>{row.volume}</td>
                 <td>{oi}</td>

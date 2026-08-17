@@ -118,6 +118,8 @@ export interface OptionResult {
   sma_20?: number | null;
   sma_50?: number | null;
   sma_200?: number | null;
+  ema_9?: number | null;
+  ema_21?: number | null;
   rsi_14?: number | null;
 }
 

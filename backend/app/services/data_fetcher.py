@@ -137,9 +137,10 @@ def fetch_price_history(symbol: str, days: int = 365) -> List[Dict[str, Any]]:
 
 
 def compute_sma_rsi(closes) -> Dict[str, Optional[float]]:
-    """Compute daily SMA(20/50/200) and RSI(14) from a 1-d close series."""
+    """Compute daily SMA(20/50/200), EMA(9/21), and RSI(14) from a 1-d close series."""
     empty: Dict[str, Optional[float]] = {
-        "sma_20": None, "sma_50": None, "sma_200": None, "rsi_14": None,
+        "sma_20": None, "sma_50": None, "sma_200": None,
+        "ema_9": None, "ema_21": None, "rsi_14": None,
     }
     arr = np.asarray(closes, dtype=float).ravel()
     if arr.size == 0:
@@ -149,6 +150,10 @@ def compute_sma_rsi(closes) -> Dict[str, Optional[float]]:
     for period, key in [(20, "sma_20"), (50, "sma_50"), (200, "sma_200")]:
         if arr.size >= period:
             result[key] = round(float(np.mean(arr[-period:])), 2)
+
+    for period, key in [(9, "ema_9"), (21, "ema_21")]:
+        if arr.size >= period:
+            result[key] = round(float(_ema(arr, period)[-1]), 2)
 
     try:
         rsi = calculate_rsi(arr, 14)
@@ -202,14 +207,15 @@ def _fetch_daily_closes(symbol: str) -> np.ndarray:
 
 def get_sma_rsi_indicators(symbol: str) -> Dict[str, Optional[float]]:
     """
-    Daily SMA 20/50/200 and RSI(14). Cached once per ticker per market session
-    so Screen All does not refetch a year of bars for every stock.
+    Daily SMA 20/50/200, EMA 9/21, and RSI(14). Cached once per ticker per market
+    session so Screen All does not refetch a year of bars for every stock.
     """
     from ..core.cache import get_cached_indicators, set_cached_indicators
 
     session = market_today().isoformat()
     cached = get_cached_indicators(symbol, session)
-    if cached is not None:
+    # Refresh if an older cache payload predates EMA fields.
+    if cached is not None and "ema_9" in cached and "ema_21" in cached:
         return cached
 
     indicators = compute_sma_rsi(_fetch_daily_closes(symbol))
