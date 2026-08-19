@@ -35,6 +35,21 @@ function assignmentDiscountPercent(
   return ((price - strike - premium) * 100) / price;
 }
 
+/** Breakeven if assigned (strike − premium) with the discount % in parens */
+function formatBreakevenWithDiscount(
+  strike: number | undefined,
+  premium: number,
+  discount: number | undefined,
+): JSX.Element {
+  if (strike === undefined || strike === null) return <span className="text-gray-500">-</span>;
+  return (
+    <span className="whitespace-nowrap">
+      {formatCurrency(strike - premium)}
+      {discount !== undefined && <span className="text-gray-400"> ({formatPercent(discount)})</span>}
+    </span>
+  );
+}
+
 function getReturnClass(value: number): string {
   if (value >= 50) return 'text-green-400';
   if (value >= 30) return 'text-emerald-400';
@@ -74,11 +89,11 @@ function formatPriceWithChange(price: number | undefined, changePercent?: number
   const isPositive = changePercent >= 0;
   const changeClass = isPositive ? 'text-green-400' : 'text-red-400';
   const changeStr = `(${isPositive ? '+' : ''}${changePercent.toFixed(1)}%)`;
-  
+
   return (
     <span className="whitespace-nowrap">
       {priceStr}{' '}
-      <span className={changeClass}>{changeStr}</span>
+      <span className={`${changeClass} text-xs`}>{changeStr}</span>
     </span>
   );
 }
@@ -159,7 +174,7 @@ function ResultCard({ row, index, onAnalyze, onShowChart }: { row: OptionResult;
         </span>
       </div>
       
-      {/* Main metrics: Strike/Premium, Expiry + Discount, then Assign Risk/DTE */}
+      {/* Main metrics: Strike/Premium, Expiry + Breakeven, then Assign Risk/DTE */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-gray-500">Strike:</span>
@@ -179,9 +194,9 @@ function ResultCard({ row, index, onAnalyze, onShowChart }: { row: OptionResult;
             />
           </span>
         </div>
-        <div className="flex justify-between" title="Discount to current price if assigned: (price − strike − premium) ÷ price">
-          <span className="text-gray-500">Discount:</span>
-          <span className="text-white font-medium">{formatPercent(discount) || '-'}</span>
+        <div className="flex justify-between gap-2" title="Breakeven if assigned: strike − premium; (%) is the discount to the current price">
+          <span className="text-gray-500">Breakeven:</span>
+          <span className="text-white font-medium">{formatBreakevenWithDiscount(row.strike, premium, discount)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Assign Risk:</span>
@@ -265,7 +280,7 @@ function DesktopTable({ data, onAnalyze, onShowChart }: { data: OptionResult[]; 
             <th>Strike</th>
             <th>Premium</th>
             <th>Expiry</th>
-            <th title="Discount to current price if assigned: (price − strike − premium) ÷ price">Discount</th>
+            <th title="Breakeven if assigned: strike − premium; (%) is the discount to the current price">Breakeven (Discount)</th>
             <th title="Annualized return">Ann. return</th>
             <th>Daily Decay</th>
             <th>Assign Risk</th>
@@ -324,8 +339,8 @@ function DesktopTable({ data, onAnalyze, onShowChart }: { data: OptionResult[]; 
                     hasDividend={row.has_dividend_before_expiry}
                   />
                 </td>
-                <td title="Discount to current price if assigned">
-                  {formatPercent(discount) || '-'}
+                <td title="Breakeven if assigned: strike − premium; (%) is the discount to the current price">
+                  {formatBreakevenWithDiscount(row.strike, premium, discount)}
                 </td>
                 <td>
                   <span className={getReturnClass(row.annualized_return)}>
