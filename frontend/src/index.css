@@ -65,7 +65,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .data-table th {
-  @apply text-gray-200 font-semibold text-left px-2.5 py-2 border-b-2 border-primary-500/30 whitespace-nowrap;
+  @apply text-gray-200 font-semibold text-left px-2 py-2 border-b-2 border-primary-500/30 whitespace-nowrap;
   position: sticky;
   top: 0;
   z-index: 4;
@@ -73,7 +73,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .data-table td {
-  @apply px-2.5 py-2 border-b border-white/5 whitespace-nowrap;
+  @apply px-2 py-2 border-b border-white/5 whitespace-nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -93,12 +93,27 @@ input:focus, textarea:focus, select:focus {
   @apply border-primary-500/20;
 }
 
-/* Freeze Symbol, Price, Strike, Premium while scrolling horizontally */
+/* Freeze Symbol, Price, Strike, Premium while scrolling horizontally.
+   Widths sized to typical content: symbol + two icon buttons, price with
+   change %, 3-4 digit strike, premium. */
 .data-table--sticky {
-  --sticky-1: 6rem;
-  --sticky-2: 10.5rem;
+  --sticky-1: 6.75rem;
+  --sticky-2: 9rem;
   --sticky-3: 5rem;
-  --sticky-4: 5.25rem;
+  --sticky-4: 4.5rem;
+}
+
+/* Numeric columns read best right-aligned; Symbol (1) and Expiry (5) stay left */
+.data-table--sticky th,
+.data-table--sticky td {
+  text-align: right;
+}
+
+.data-table--sticky th:nth-child(1),
+.data-table--sticky td:nth-child(1),
+.data-table--sticky th:nth-child(5),
+.data-table--sticky td:nth-child(5) {
+  text-align: left;
 }
 
 .data-table--sticky th:nth-child(-n+4),
