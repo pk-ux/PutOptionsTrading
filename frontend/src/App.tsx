@@ -11,14 +11,17 @@ import { Admin } from '@/pages/Admin';
 // Check if Clerk is configured
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-// Protected route wrapper
+// Protected route wrapper. Clerk hooks throw outside ClerkProvider, so the
+// no-Clerk (dev mode) check must happen before any useAuth call.
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
-
-  // If Clerk is not enabled, allow access (dev mode)
   if (!CLERK_ENABLED) {
     return <>{children}</>;
   }
+  return <ClerkProtectedRoute>{children}</ClerkProtectedRoute>;
+}
+
+function ClerkProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
 
   // Wait for auth to load
   if (!isLoaded) {
