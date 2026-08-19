@@ -136,6 +136,65 @@ def fetch_price_history(symbol: str, days: int = 365) -> List[Dict[str, Any]]:
         return []
 
 
+# ~5y visible history + ~200 trading sessions of warm-up so SMA 200 has values
+# at the left edge of the 5Y chart window (200 sessions ≈ 290 calendar days).
+CANDLE_HISTORY_CALENDAR_DAYS = 5 * 365 + 405
+
+
+def fetch_candles_with_indicators(symbol: str) -> Dict[str, Any]:
+    """
+    Daily OHLCV candles plus full SMA 20/50/200 and EMA 9/21 overlay series
+    for the price chart. One max-depth fetch; range selection is client-side.
+    """
+    from datetime import timezone
+
+    as_of = datetime.now(timezone.utc).isoformat()
+    empty = {"symbol": symbol, "as_of": as_of, "candles": [], "overlays": {}}
+
+    try:
+        start = (datetime.now() - timedelta(days=CANDLE_HISTORY_CALENDAR_DAYS)).date()
+        hist = yf.Ticker(symbol).history(start=start.isoformat(), interval="1d", timeout=20)
+    except Exception as e:
+        logger.error(f"Error fetching candles for {symbol}: {e}")
+        return empty
+
+    if hist is None or hist.empty:
+        return empty
+
+    candles = []
+    for date, row in hist.iterrows():
+        candles.append({
+            "time": date.strftime("%Y-%m-%d"),
+            "open": round(float(row["Open"]), 2),
+            "high": round(float(row["High"]), 2),
+            "low": round(float(row["Low"]), 2),
+            "close": round(float(row["Close"]), 2),
+            "volume": int(row["Volume"]),
+        })
+
+    times = [c["time"] for c in candles]
+    closes = np.array([c["close"] for c in candles], dtype=float)
+
+    overlays: Dict[str, List[Dict[str, Any]]] = {}
+    for period, key in [(20, "sma_20"), (50, "sma_50"), (200, "sma_200")]:
+        if closes.size >= period:
+            sma = np.convolve(closes, np.ones(period) / period, mode="valid")
+            overlays[key] = [
+                {"time": times[i + period - 1], "value": round(float(v), 2)}
+                for i, v in enumerate(sma)
+            ]
+    for period, key in [(9, "ema_9"), (21, "ema_21")]:
+        if closes.size >= period:
+            ema = _ema(closes, period)
+            overlays[key] = [
+                {"time": times[i], "value": round(float(v), 2)}
+                for i, v in enumerate(ema)
+                if i >= period - 1
+            ]
+
+    return {"symbol": symbol, "as_of": as_of, "candles": candles, "overlays": overlays}
+
+
 def compute_sma_rsi(closes) -> Dict[str, Optional[float]]:
     """Compute daily SMA(20/50/200), EMA(9/21), and RSI(14) from a 1-d close series."""
     empty: Dict[str, Optional[float]] = {

@@ -10,6 +10,7 @@ import type {
   ScreenRequest, 
   ScreenResponse, 
   NewsResponse,
+  CandlesResponse,
   HealthResponse,
   MarketClock,
   Filter,
@@ -129,6 +130,11 @@ export const apiClient = {
     const response = await api.get(`/api/v1/news/${symbol}`, {
       params: { limit, max_age_days: maxAgeDays },
     });
+    return response.data;
+  },
+
+  async getCandles(symbol: string): Promise<CandlesResponse> {
+    const response = await api.get(`/api/v1/candles/${encodeURIComponent(symbol)}`);
     return response.data;
   },
 

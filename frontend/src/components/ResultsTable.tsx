@@ -4,13 +4,14 @@
  */
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Bot } from 'lucide-react';
+import { ChevronDown, ChevronUp, Bot, CandlestickChart } from 'lucide-react';
 import type { OptionResult } from '@/types';
 
 interface ResultsTableProps {
   data: OptionResult[];
   title: string;
   onAnalyze?: (symbol: string) => void;
+  onShowChart?: (symbol: string) => void;
 }
 
 function formatCurrency(value: number | undefined): string {
@@ -115,7 +116,7 @@ function ExpiryWithEvents({
 }
 
 // Mobile card component for a single result
-function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: number; onAnalyze?: (symbol: string) => void }) {
+function ResultCard({ row, index, onAnalyze, onShowChart }: { row: OptionResult; index: number; onAnalyze?: (symbol: string) => void; onShowChart?: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   
   const premium = row.premium ?? row.lastPrice ?? 0;
@@ -141,6 +142,15 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
               title="AI Analysis"
             >
               <Bot size={16} className="text-primary-400" />
+            </button>
+          )}
+          {onShowChart && (
+            <button
+              onClick={() => onShowChart(row.symbol)}
+              className="p-1.5 hover:bg-primary-500/20 rounded-lg transition-colors"
+              title="Price chart"
+            >
+              <CandlestickChart size={16} className="text-primary-400" />
             </button>
           )}
         </div>
@@ -244,7 +254,7 @@ function ResultCard({ row, index, onAnalyze }: { row: OptionResult; index: numbe
 }
 
 // Desktop table component
-function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (symbol: string) => void }) {
+function DesktopTable({ data, onAnalyze, onShowChart }: { data: OptionResult[]; onAnalyze?: (symbol: string) => void; onShowChart?: (symbol: string) => void }) {
   return (
     <div className="rounded-xl shadow-lg shadow-black/20 border border-white/5">
       <table className="data-table data-table--sticky">
@@ -293,6 +303,15 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
                         <Bot size={14} className="text-primary-400" />
                       </button>
                     )}
+                    {onShowChart && (
+                      <button
+                        onClick={() => onShowChart(row.symbol)}
+                        className="p-0.5 hover:bg-primary-500/20 rounded transition-colors"
+                        title="Price chart"
+                      >
+                        <CandlestickChart size={14} className="text-primary-400" />
+                      </button>
+                    )}
                   </span>
                 </td>
                 <td>{formatPriceWithChange(row.current_price, row.price_change_percent)}</td>
@@ -334,7 +353,7 @@ function DesktopTable({ data, onAnalyze }: { data: OptionResult[]; onAnalyze?: (
   );
 }
 
-export function ResultsTable({ data, title, onAnalyze }: ResultsTableProps) {
+export function ResultsTable({ data, title, onAnalyze, onShowChart }: ResultsTableProps) {
   if (!data || data.length === 0) {
     return (
       <div className="text-center text-gray-400 py-8">
@@ -348,13 +367,13 @@ export function ResultsTable({ data, title, onAnalyze }: ResultsTableProps) {
       {/* Mobile: Card layout */}
       <div className="md:hidden">
         {data.map((row, index) => (
-          <ResultCard key={`card-${row.symbol}-${row.strike}-${row.expiry}-${index}`} row={row} index={index} onAnalyze={onAnalyze} />
+          <ResultCard key={`card-${row.symbol}-${row.strike}-${row.expiry}-${index}`} row={row} index={index} onAnalyze={onAnalyze} onShowChart={onShowChart} />
         ))}
       </div>
       
       {/* Desktop: Table layout */}
       <div className="hidden md:block">
-        <DesktopTable data={data} onAnalyze={onAnalyze} />
+        <DesktopTable data={data} onAnalyze={onAnalyze} onShowChart={onShowChart} />
       </div>
     </>
   );

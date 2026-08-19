@@ -314,7 +314,7 @@ def clear_app_cache() -> int:
     """
     cache = get_cache()
     deleted = 0
-    for prefix in ("price:", "options:", "news:", "events:", "indicators:"):
+    for prefix in ("price:", "options:", "news:", "events:", "indicators:", "candles:"):
         deleted += cache.delete_by_prefix(prefix)
     return deleted
 
@@ -433,6 +433,21 @@ def set_cached_indicators(symbol: str, data: Dict, session: Optional[str] = None
         session = market_today().isoformat()
     key = make_cache_key("indicators", _normalize_symbol(symbol), session)
     cache_set_json(key, data, ttl=12 * 3600)
+
+
+# Daily candles only change via today's partial bar; 30 min keeps them fresh
+# intraday while bounding yfinance calls.
+CANDLES_TTL_SECONDS = 1800
+
+
+def get_cached_candles(symbol: str) -> Optional[Dict]:
+    """Get cached daily candles + indicator overlays for the price chart."""
+    return cache_get_json(make_cache_key("candles", _normalize_symbol(symbol)))
+
+
+def set_cached_candles(symbol: str, data: Dict) -> None:
+    """Cache daily candles + indicator overlays."""
+    cache_set_json(make_cache_key("candles", _normalize_symbol(symbol)), data, ttl=CANDLES_TTL_SECONDS)
 
 
 def get_config_hash(config: dict) -> str:

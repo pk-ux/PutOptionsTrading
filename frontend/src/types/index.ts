@@ -159,6 +159,32 @@ export interface NewsResponse {
   error?: string;
 }
 
+// One daily OHLCV bar for the price chart (time as YYYY-MM-DD)
+export interface CandleBar {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+// One point of an indicator overlay line
+export interface OverlayPoint {
+  time: string;
+  value: number;
+}
+
+export type OverlayKey = 'sma_20' | 'sma_50' | 'sma_200' | 'ema_9' | 'ema_21';
+
+// Candles response from /api/v1/candles/{symbol}
+export interface CandlesResponse {
+  symbol: string;
+  as_of: string;
+  candles: CandleBar[];
+  overlays: Partial<Record<OverlayKey, OverlayPoint[]>>;
+}
+
 // Health check response
 export interface HealthResponse {
   status: string;
