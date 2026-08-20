@@ -10,7 +10,7 @@ Interactive web application that scans put option chains for a list of stocks, c
 
 ## Screenshots
 
-**Desktop** — screen cash-secured puts by trade idea and assignment risk, then compare contracts in a dense results table.
+**Desktop** — screen cash-secured puts by trade idea and assignment risk, then compare contracts as a responsive card grid or a dense column table.
 
 ![PutYield desktop screener](docs/screenshots/desktop.png)
 
@@ -29,6 +29,9 @@ Interactive web application that scans put option chains for a list of stocks, c
 - **Admin Dashboard**: Manage system filters, trade ideas, API provider, AI settings at `/admin`
 - **Auto-save**: Selections are automatically saved - no manual save button needed
 - **Real-time progress**: See each symbol being screened with live progress bar
+- **Card or table results**: Responsive card grid by default (1-4 columns by screen width), with a one-click toggle to the classic column table
+- **Price charts**: TradingView-style candlestick chart per ticker (1M-5Y ranges, SMA 20/50/200 and EMA 9/21 overlays, volume histogram, volume-by-price profile, support/resistance levels)
+- **Flow & Positioning score**: Quantitative directional bias per ticker from Unusual Whales options-flow and dealer-positioning data
 - **Responsive UI**: Works on desktop and mobile browsers
 - **PWA Support**: Install as an app on iOS/Android home screen
 - **Caching**: Redis/in-memory caching for faster repeated queries
@@ -138,9 +141,66 @@ GEMINI_API_KEY=your_gemini_api_key
 
 ---
 
+## Price Charts
+
+Each result exposes a candlestick chart for its ticker, opened from the chart icon next to the symbol. The chart renders in a full-screen panel on every screen size (Escape or the close button dismisses it).
+
+| Capability | Details |
+|------------|---------|
+| Ranges | 1M, 3M, 6M, 1Y, 3Y, 5Y — switching only moves the visible window, no refetch |
+| Overlays | SMA 20/50/200 (on by default), EMA 9/21 (off by default) — each toggled from the legend |
+| Volume | Histogram along the bottom, plus a volume-by-price profile shelf on the right edge |
+| Support/Resistance | Pivot-cluster levels drawn as dashed lines with price-axis labels (off by default) |
+| Readout | Crosshair shows OHLC, percent change and volume for the hovered bar |
+
+**Data**: one fetch per symbol of roughly six years of daily bars from Yahoo Finance, plus backend-computed SMA/EMA series. The extra history beyond the 5Y window is warm-up so the SMA 200 line is never blank at the left edge. Cached 30 minutes per symbol.
+
+**Bar density**: candles are capped at a maximum width, so a short range on a wide screen extends further back rather than stretching a handful of huge bars. The volume profile and support/resistance levels are always computed over the window actually displayed.
+
+Charts are rendered with [Lightweight Charts](https://www.tradingview.com/lightweight-charts/) by TradingView; the required attribution appears in the panel toolbar.
+
+---
+
+## Flow & Positioning Score
+
+A quantitative directional read for each ticker, shown inside a result card's **More details** section. It is computed from Unusual Whales options-flow and dealer-positioning data — deliberately different inputs from the AI Stock Analysis panel, which reads news and technicals through an LLM. This score involves no LLM, costs nothing per run, and shows every factor's contribution.
+
+Requires `UNUSUAL_WHALES_API_KEY`. Without it the card shows a "not configured" note instead of an error.
+
+### Signals
+
+Each signal normalizes to `-1..+1` (negative = bearish). The composite is a weighted mean **over signals that returned data**, so a failed endpoint lowers coverage instead of breaking the result.
+
+| Signal | Weight | Source | Reads |
+|--------|--------|--------|-------|
+| Options flow | 30% | `/api/stock/{t}/flow-per-expiry` | Ask-side calls + bid-side puts (bullish) vs the mirror, weighted toward the contract's own expiry |
+| Dealer delta trend | 20% | `/api/stock/{t}/greek-exposure` | Direction of change in net dealer delta over the last 10 sessions |
+| Gamma regime | 15% | same call | Long gamma dampens moves; short gamma amplifies them |
+| Dark pool positioning | 15% | `/api/darkpool/{t}/price-levels` | Spot versus the volume-weighted price institutions traded at |
+| Insider flow | 10% | `/api/insider/{t}/ticker-flow` | Discretionary buying/selling over 90 days |
+| Max pain pull | 10% | `/api/stock/{t}/max-pain` | Pin pull at the contract's expiry |
+
+Two deliberate refinements in the insider signal: **10b5-1 transactions are excluded** (they are scheduled months ahead and say nothing about current conviction, so counting them makes routine planned selling look like a bearish call), and the score **scales by notional materiality** so one small sale cannot register as maximally bearish.
+
+### Output
+
+`BULLISH` / `NEUTRAL` / `BEARISH` (thresholds at ±0.20), a score on a -100..100 scale, a confidence value, and one sentence framing the read for the specific strike being sold. Confidence falls independently for three reasons: missing data (coverage), signals disagreeing with each other, and a composite near zero.
+
+Weights live in `DIRECTION_WEIGHTS` in `backend/app/services/direction.py`. They are judgment-based, not backtested — tune them there.
+
+### Fetching and caching
+
+The prediction runs **only when a card is expanded**, never during screening. The raw provider bundle is cached per **symbol** for 15 minutes while scoring is recomputed per request, so several contracts on one ticker share a single fetch and each still gets an expiry- and strike-aware read. Each card has a refresh button that forces a fresh pull.
+
+**Disclaimer**: this is positioning-derived context, not a price forecast or investment advice.
+
+---
+
 ## Table of Contents
 
 - [AI Stock Analysis](#ai-stock-analysis)
+- [Price Charts](#price-charts)
+- [Flow & Positioning Score](#flow--positioning-score)
 - [System Architecture](#system-architecture)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
@@ -169,6 +229,7 @@ flowchart TB
         Routes[API Routes]
         Services[Business Logic]
         Analyzer[Stock Analyzer]
+        Direction[Direction Scorer]
         Models[SQLAlchemy Models]
     end
     
@@ -177,6 +238,7 @@ flowchart TB
         Massive[Massive.com API]
         Alpaca[Alpaca API]
         Yahoo[Yahoo Finance]
+        UW[Unusual Whales API]
     end
     
     subgraph llm [LLM Providers]
@@ -195,11 +257,15 @@ flowchart TB
     APIClient --> Routes
     Routes --> Services
     Routes --> Analyzer
+    Routes --> Direction
+    Direction --> UW
+    Direction --> Cache
     Services --> Models
     Models --> DB
     Services --> Cache
     Services --> Massive
     Services --> Alpaca
+    Services --> Yahoo
     Analyzer --> Yahoo
     Analyzer --> Massive
     Analyzer --> Alpaca
@@ -255,7 +321,7 @@ flowchart LR
     L --> FC[Cache results]
     FC --> M[Return filtered results]
     FB --> M
-    M --> N[Display in results table]
+    M --> N[Display as card grid or table]
 ```
 
 ### User Flow (Simplified)
@@ -291,12 +357,14 @@ flowchart TD
 | Server State | TanStack Query | API caching and mutations |
 | Styling | Tailwind CSS | Utility-first CSS |
 | Icons | Lucide React | UI iconography |
+| Charts | Lightweight Charts (TradingView) | Candlestick price charts with indicator overlays |
 | Backend | FastAPI | REST API server |
 | ORM | SQLAlchemy | Database abstraction |
 | Database | PostgreSQL / SQLite | Data persistence |
 | Authentication | Clerk | User auth (OAuth + Email) |
 | Options Data | Massive.com / Alpaca | Professional Greeks and options chains |
-| Market Data | Yahoo Finance (yfinance) | Price data, technicals, fallback data |
+| Market Data | Yahoo Finance (yfinance) | Price data, candles, technicals, fallback data |
+| Flow Data | Unusual Whales | Options flow, dealer greeks, dark pool, insider flow |
 | AI Analysis | OpenAI / Gemini / Groq | LLM-powered stock analysis |
 | Technical Analysis | NumPy + Python | Computed indicators (RSI, MACD, Bollinger, etc.) |
 | Data Validation | Pydantic | Schema validation and serialization |
@@ -315,23 +383,32 @@ PutOptionsTrading/
 │   │   ├── components/
 │   │   │   ├── AISettingsCard.tsx    # Admin AI analysis settings
 │   │   │   ├── ApiProviderCard.tsx   # Admin API provider selector
+│   │   │   ├── BreakoutScannerCard.tsx # Admin breakout scanner controls
 │   │   │   ├── CacheSettingsCard.tsx # Admin cache settings
+│   │   │   ├── CandlestickChart.tsx  # Lightweight Charts canvas wrapper
 │   │   │   ├── ChipSelector.tsx     # Filter/Trade Idea chip selector
 │   │   │   ├── FilterForm.tsx       # Create/edit filter form
 │   │   │   ├── InstallPrompt.tsx    # PWA install prompt
+│   │   │   ├── MarketClockBadge.tsx # Market open/closed indicator
 │   │   │   ├── MarketSettingsCard.tsx # Admin market settings
 │   │   │   ├── Modal.tsx            # Reusable modal component
 │   │   │   ├── NewsSection.tsx      # Ticker news display
-│   │   │   ├── ResultsTable.tsx     # Options results table
+│   │   │   ├── PredictionPanel.tsx  # Flow & Positioning score in card
+│   │   │   ├── ResultsTable.tsx     # Results as card grid or table
 │   │   │   ├── ScreeningProgress.tsx # Progress indicator
-│   │   │   ├── Sidebar.tsx          # Shows current selection info
+│   │   │   ├── Sidebar.tsx          # Guide drawer
 │   │   │   ├── SortableList.tsx     # Drag-and-drop sortable list
 │   │   │   ├── StockAnalysisPanel.tsx # AI analysis display panel
+│   │   │   ├── StockChartPanel.tsx  # Full-screen price chart panel
 │   │   │   ├── TradeIdeaForm.tsx    # Create/edit trade idea form
 │   │   │   └── UserMenu.tsx         # User avatar/menu
 │   │   ├── hooks/
 │   │   │   ├── useAuthSync.ts       # Clerk token sync
 │   │   │   └── useFiltersAndIdeas.ts # Filter/Trade Idea management
+│   │   ├── utils/
+│   │   │   ├── chartAnalysis.ts     # Volume profile + support/resistance
+│   │   │   ├── marketTime.ts        # Market timezone formatting
+│   │   │   └── resultsSummary.ts    # Best-per-stock ranking
 │   │   ├── pages/
 │   │   │   ├── Admin.tsx       # Admin dashboard page
 │   │   │   └── Dashboard.tsx   # Main application page
@@ -354,27 +431,40 @@ PutOptionsTrading/
 │   │   ├── api/v1/
 │   │   │   ├── admin.py        # Admin API endpoints
 │   │   │   ├── analyze.py      # AI stock analysis endpoint
+│   │   │   ├── breakout_scanner.py # Breakout scanner admin endpoints
+│   │   │   ├── candles.py      # Daily OHLCV + indicator overlays
+│   │   │   ├── direction.py    # Flow & Positioning prediction
 │   │   │   ├── filters.py      # Filter CRUD endpoints
 │   │   │   ├── health.py       # Health check endpoint
+│   │   │   ├── market.py       # Market clock endpoint
 │   │   │   ├── router.py       # Route aggregator
-│   │   │   ├── screen.py       # Screening endpoints
+│   │   │   ├── screen.py       # Screening + news endpoints
 │   │   │   ├── settings.py     # User settings endpoints
 │   │   │   └── trade_ideas.py  # Trade Idea CRUD endpoints
 │   │   ├── core/
+│   │   │   ├── api_provider.py # Active provider selection
 │   │   │   ├── cache.py        # Redis/in-memory caching
 │   │   │   ├── config.py       # Settings from env vars
 │   │   │   ├── database.py     # SQLAlchemy setup
-│   │   │   └── deps.py         # FastAPI dependencies
-│   │   ├── models/
-│   │   │   ├── filter.py       # Filter model
-│   │   │   ├── trade_idea.py   # Trade Idea model
-│   │   │   └── user.py         # User + UserSettings models
-│   │   ├── schemas/
-│   │   │   ├── analysis.py     # AI analysis Pydantic schemas
-│   │   │   ├── filter.py       # Filter schemas
-│   │   │   ├── screen.py       # Request/response schemas
-│   │   │   ├── trade_idea.py   # Trade Idea schemas
-│   │   │   └── user.py         # User schemas
+│   │   │   ├── deps.py         # FastAPI dependencies
+│   │   │   ├── market_clock.py # Market session + timezone helpers
+│   │   │   └── market_settings.py # Market hours settings
+│   │   ├── models/             # SQLAlchemy models (user, filter,
+│   │   │                       # trade_idea, ai_settings, analysis_cache,
+│   │   │                       # cache_settings, market_settings,
+│   │   │                       # api_provider_settings, breakout_scanner)
+│   │   ├── schemas/            # Pydantic schemas (analysis, candles,
+│   │   │                       # direction, filter, screen, trade_idea, user)
+│   │   ├── modules/
+│   │   │   └── breakout_scanner/     # Self-contained breakout scanner
+│   │   │       ├── providers/        # UW / Alpaca / Yahoo data providers
+│   │   │       ├── signals.py        # Price-structure signals
+│   │   │       ├── uw_signals.py     # Unusual Whales signal normalization
+│   │   │       ├── scoring.py        # Cross-sectional composite scoring
+│   │   │       ├── market_context.py # Regime / fear-greed context
+│   │   │       ├── scanner.py        # Scan orchestrator
+│   │   │       ├── integration.py    # App-aware layer (DB, providers)
+│   │   │       └── ARCHITECTURE.md   # Module design docs
 │   │   ├── services/
 │   │   │   ├── llm/                  # LLM provider framework
 │   │   │   │   ├── base.py           # Base provider + prompt engineering
@@ -383,7 +473,8 @@ PutOptionsTrading/
 │   │   │   │   ├── openai_provider.py # OpenAI GPT provider
 │   │   │   │   └── provider_manager.py # Provider selection logic
 │   │   │   ├── alpaca_api_client.py  # Alpaca API client
-│   │   │   ├── data_fetcher.py       # Yahoo Finance data + technical calculations
+│   │   │   ├── data_fetcher.py       # Yahoo data, candles, technicals
+│   │   │   ├── direction.py          # Flow & Positioning scoring model
 │   │   │   ├── greeks_calculator.py  # Black-Scholes Greeks calculator
 │   │   │   ├── massive_api_client.py # Massive.com API client
 │   │   │   ├── options_screener.py   # Core screening logic
@@ -391,6 +482,7 @@ PutOptionsTrading/
 │   │   │   ├── stock_analyzer.py     # AI analysis orchestrator
 │   │   │   └── user.py               # User management
 │   │   └── main.py             # FastAPI app entry point
+│   ├── tests/                  # pytest suite
 │   ├── Dockerfile              # Production container
 │   └── requirements.txt        # Python dependencies
 │
@@ -796,6 +888,110 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 }
 ```
 
+#### Get Candles
+
+```http
+GET /api/v1/candles/{symbol}
+```
+
+Roughly six years of daily OHLCV bars plus SMA 20/50/200 and EMA 9/21 overlay series. Cached 30 minutes per symbol.
+
+**Response:**
+```json
+{
+  "symbol": "AAPL",
+  "as_of": "2026-08-19T04:53:02Z",
+  "candles": [
+    { "time": "2026-08-18", "open": 307.58, "high": 311.49, "low": 305.74, "close": 310.03, "volume": 53370900 }
+  ],
+  "overlays": {
+    "sma_20": [{ "time": "2026-08-18", "value": 316.31 }],
+    "sma_50": [], "sma_200": [], "ema_9": [], "ema_21": []
+  }
+}
+```
+
+Returns `404` when no price history exists for the symbol.
+
+#### Get Flow & Positioning Prediction
+
+```http
+GET /api/v1/prediction/{symbol}?expiry=2026-09-04&strike=185&spot=228.39
+```
+
+Directional bias from Unusual Whales data. `expiry` and `strike` tailor the read to a specific contract; `spot` is optional and falls back to the close price returned with the max-pain data. Add `force_refresh=true` to bypass the 15-minute cache.
+
+**Response:**
+```json
+{
+  "symbol": "NBIS",
+  "as_of": "2026-08-20T01:58:00-04:00",
+  "direction": "BULLISH",
+  "score": 24.1,
+  "confidence": 0.543,
+  "coverage": 1.0,
+  "stability": "stabilizing",
+  "gamma_regime": "long_gamma",
+  "signals": [
+    {
+      "key": "flow_sentiment",
+      "label": "Options flow",
+      "weight": 0.3,
+      "score": -0.09,
+      "detail": "$98.5M bullish vs $120.4M bearish premium near your expiry",
+      "available": true
+    }
+  ],
+  "levels": { "dark_pool_vwap": 223.12, "point_of_control": 224.0, "max_pain": 245.0 },
+  "put_seller_note": "Your $185.00 strike sits below the $223.12 dark-pool average...",
+  "cached_at": null,
+  "expires_at": "2026-08-20T02:13:00-04:00",
+  "disclaimer": "Directional bias derived from options positioning and flow data..."
+}
+```
+
+| Status | Meaning |
+|--------|---------|
+| `422` | Invalid symbol |
+| `404` | No positioning data available for the symbol |
+| `503` | `UNUSUAL_WHALES_API_KEY` is not configured |
+| `502` | Unusual Whales unreachable |
+
+#### AI Stock Analysis
+
+```http
+POST /api/v1/analyze/{symbol}?force_refresh=false
+```
+
+Returns a `StockAnalysis` object (sentiment, confidence, scenarios, factors, trade recommendation) or an error object with `error_type` of `configuration`, `data`, `analysis`, or `system`. Results are cached per symbol for the configured TTL; `force_refresh=true` bypasses it.
+
+```http
+GET  /api/v1/analyze/settings
+PUT  /api/v1/analyze/settings
+```
+
+Read or update AI settings (`ai_enabled`, `active_provider`, `cache_enabled`, `cache_ttl_seconds`).
+
+#### Market Clock
+
+```http
+GET /api/v1/market-clock
+```
+
+Current US market session state, used for the header badge and cache keying.
+
+#### Other Endpoints
+
+| Group | Routes |
+|-------|--------|
+| Filters | `GET/POST /api/v1/filters`, `GET/PUT/DELETE /api/v1/filters/{id}` |
+| Trade Ideas | `GET/POST /api/v1/trade-ideas`, `GET/PUT/DELETE /api/v1/trade-ideas/{id}` |
+| User | `GET /api/v1/me`, `GET /api/v1/me/is-admin` |
+| Admin | `/api/v1/admin/filters`, `/trade-ideas`, `/api-provider`, `/cache-settings`, `/market-settings`, `/seed` |
+| Breakout Scanner (admin) | `GET/PUT /api/v1/admin/breakout-scanner`, `POST /run`, `POST /reset`, `GET /results` |
+
+Interactive API docs are served at `http://localhost:8000/docs`.
+
 ---
 
 ## Configuration
@@ -812,6 +1008,7 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 | `MASSIVE_API_KEY` | No* | - | Massive.com API key ([sign up](https://massive.com)) |
 | `ALPACA_API_KEY` | No* | - | Alpaca API key ([sign up](https://app.alpaca.markets/)) |
 | `ALPACA_SECRET_KEY` | No* | - | Alpaca API secret key |
+| `UNUSUAL_WHALES_API_KEY` | No | - | Unusual Whales API key. Required for the Flow & Positioning score and the breakout scanner's smart-money signals |
 | **Authentication** | | | |
 | `CLERK_SECRET_KEY` | No | - | Clerk secret key for JWT verification. Omit for dev mode (no auth) |
 | `ADMIN_CLERK_IDS` | No | - | Comma-separated Clerk user IDs for admin access |
@@ -851,19 +1048,23 @@ GET /api/v1/news/{symbol}?limit=10&max_age_days=7
 
 The backend uses caching to reduce external API calls and improve response times.
 
-| Data Type | TTL | Description |
-|-----------|-----|-------------|
-| Stock prices | 3 minutes | From Yahoo Finance |
-| Options chains | 5 minutes | From Massive.com / Alpaca (already 15-min delayed for Massive) |
-| News | 15 minutes | From Massive.com / Alpaca |
-| AI analysis | 24 hours | LLM-generated analysis (configurable via Admin Dashboard) |
-| SPY benchmark | 5 minutes | In-memory cache for relative strength calculations |
+| Data Type | Key prefix | TTL | Admin-editable | Description |
+|-----------|-----------|-----|----------------|-------------|
+| Stock prices | `price:` | 3 minutes | Yes | From Yahoo Finance |
+| Options chains | `options:` | 5 minutes | Yes | From Massive.com / Alpaca (already 15-min delayed for Massive) |
+| News | `news:` | 15 minutes | Yes | From Massive.com / Alpaca |
+| Event dates | `events:` | 1 week | Yes | Earnings / ex-dividend dates |
+| Indicators | `indicators:` | 12 hours | No | SMA/EMA/RSI scalars, keyed per market session |
+| Candles | `candles:` | 30 minutes | No | Daily OHLCV + overlay series for price charts |
+| Flow & Positioning | `direction:` | 15 minutes | No | Raw Unusual Whales bundle, cached per symbol |
+| AI analysis | DB table | 24 hours | Yes | LLM-generated analysis, stored in `analysis_cache` |
+| SPY benchmark | in-process | 5 minutes | No | Relative strength calculations |
 
 **Cache Backends:**
 - **Redis** (recommended for production): Set `REDIS_URL` environment variable
 - **In-Memory** (default for local dev): Used when `REDIS_URL` is not set
 
-**Cache Management:** Cache settings (enable/disable, TTL) are managed via the Admin Dashboard at `/admin`.
+**Cache Management:** Cache settings (enable/disable, and the admin-editable TTLs above) are managed via the Admin Dashboard at `/admin`. Clearing the cache removes every prefix listed above; fixed TTLs are constants in `backend/app/core/cache.py`.
 
 ### Screening Parameters
 

@@ -40,6 +40,13 @@ git push origin main
 
 The database schema will be automatically updated when the app starts.
 
+> **Scope of the automatic update:** startup calls `Base.metadata.create_all()`, which
+> creates **new tables** but does **not** add columns to tables that already exist, and
+> the project has no Alembic setup. Adding a column to an existing model therefore needs
+> either an explicit `ALTER TABLE` (see `ensure_schema()` in
+> `backend/app/modules/breakout_scanner/integration.py`) or defensive
+> `getattr(row, "field", default)` reads. Adding a whole new table needs neither.
+
 ### Step 3: Set Admin User(s)
 
 Add your Clerk user ID to the `ADMIN_CLERK_IDS` environment variable:
