@@ -48,8 +48,11 @@ def get_cached_analysis(db: Session, symbol: str, provider: str) -> dict | None:
     if cached:
         try:
             result = json.loads(cached.analysis_json)
+            # Stored llm_provider may carry a model suffix for display, e.g.
+            # "openai (gpt-4o)" — match on the provider key prefix, not equality,
+            # or the cache never hits for such providers.
             cached_provider = (result.get('llm_provider') or "").lower()
-            if cached_provider and cached_provider != provider.lower():
+            if cached_provider and not cached_provider.startswith(provider.lower()):
                 print(f"[Analysis Cache MISS] {symbol} (cached {cached_provider}, requested {provider})")
                 return None
             result['cached_at'] = to_market_iso(cached.created_at)
