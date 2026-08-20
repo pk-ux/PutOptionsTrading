@@ -6,12 +6,14 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Bot, CandlestickChart } from 'lucide-react';
 import type { OptionResult } from '@/types';
+import type { ResultsLayout } from '@/stores/useAppStore';
 
 interface ResultsTableProps {
   data: OptionResult[];
   title: string;
   onAnalyze?: (symbol: string) => void;
   onShowChart?: (symbol: string) => void;
+  layout?: ResultsLayout;
 }
 
 function formatCurrency(value: number | undefined): string {
@@ -143,7 +145,7 @@ function ResultCard({ row, index, onAnalyze, onShowChart }: { row: OptionResult;
   return (
     <div 
       key={`${row.symbol}-${row.strike}-${row.expiry}-${index}`}
-      className="bg-dark-800/50 rounded-xl border border-white/10 p-4 mb-3"
+      className="bg-dark-800/50 rounded-xl border border-white/10 p-4 self-start"
     >
       {/* Header row: Symbol, Price, Return badge */}
       <div className="flex items-center justify-between mb-3">
@@ -368,7 +370,7 @@ function DesktopTable({ data, onAnalyze, onShowChart }: { data: OptionResult[]; 
   );
 }
 
-export function ResultsTable({ data, title, onAnalyze, onShowChart }: ResultsTableProps) {
+export function ResultsTable({ data, title, onAnalyze, onShowChart, layout = 'cards' }: ResultsTableProps) {
   if (!data || data.length === 0) {
     return (
       <div className="text-center text-gray-400 py-8">
@@ -377,19 +379,16 @@ export function ResultsTable({ data, title, onAnalyze, onShowChart }: ResultsTab
     );
   }
 
+  if (layout === 'table') {
+    return <DesktopTable data={data} onAnalyze={onAnalyze} onShowChart={onShowChart} />;
+  }
+
+  // Card grid: column count adapts to viewport width
   return (
-    <>
-      {/* Mobile: Card layout */}
-      <div className="md:hidden">
-        {data.map((row, index) => (
-          <ResultCard key={`card-${row.symbol}-${row.strike}-${row.expiry}-${index}`} row={row} index={index} onAnalyze={onAnalyze} onShowChart={onShowChart} />
-        ))}
-      </div>
-      
-      {/* Desktop: Table layout */}
-      <div className="hidden md:block">
-        <DesktopTable data={data} onAnalyze={onAnalyze} onShowChart={onShowChart} />
-      </div>
-    </>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+      {data.map((row, index) => (
+        <ResultCard key={`card-${row.symbol}-${row.strike}-${row.expiry}-${index}`} row={row} index={index} onAnalyze={onAnalyze} onShowChart={onShowChart} />
+      ))}
+    </div>
   );
 }

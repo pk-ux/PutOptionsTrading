@@ -8,6 +8,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { OptionResult, Filter, TradeIdea } from '@/types';
 
+// Results layout preference
+export type ResultsLayout = 'cards' | 'table';
+
 // Screening progress state
 export interface ScreeningProgress {
   isActive: boolean;
@@ -71,6 +74,8 @@ interface AppState {
   setIsScreening: (screening: boolean) => void;
   usedYahooFallback: boolean;
   setUsedYahooFallback: (used: boolean) => void;
+  resultsLayout: ResultsLayout;
+  setResultsLayout: (layout: ResultsLayout) => void;
 
   // Sidebar
   sidebarOpen: boolean;
@@ -215,6 +220,8 @@ export const useAppStore = create<AppState>()(
       setIsScreening: (screening) => set({ isScreening: screening }),
       usedYahooFallback: false,
       setUsedYahooFallback: (used) => set({ usedYahooFallback: used }),
+      resultsLayout: 'cards',
+      setResultsLayout: (layout) => set({ resultsLayout: layout }),
 
       // Sidebar - default closed for better mobile experience
       sidebarOpen: false,
@@ -234,8 +241,13 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'put-options-screener',
-      partialize: () => ({}),
-      merge: (_persisted, current) => ({ ...current, sidebarOpen: false }),
+      // Only the layout preference survives reloads
+      partialize: (state) => ({ resultsLayout: state.resultsLayout }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<AppState>),
+        sidebarOpen: false,
+      }),
     }
   )
 );

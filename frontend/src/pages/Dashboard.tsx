@@ -4,7 +4,7 @@
  */
 
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Play, Loader2, ChevronDown, BookOpen, X } from 'lucide-react';
+import { Play, Loader2, ChevronDown, BookOpen, X, LayoutGrid, Table2 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import apiClient from '@/api/client';
 import { Sidebar } from '@/components/Sidebar';
@@ -40,6 +40,8 @@ export function Dashboard() {
     isScreening,
     usedYahooFallback,
     setUsedYahooFallback,
+    resultsLayout,
+    setResultsLayout,
     sidebarOpen,
     toggleSidebar,
     screeningProgress,
@@ -455,26 +457,54 @@ export function Dashboard() {
                 )}
               </h2>
               
-              {/* View selector */}
-              {viewOptions.length > 1 && (
-                <div className="relative">
-                  <select
-                    value={activeView}
-                    onChange={(e) => setSelectedView(e.target.value)}
-                    className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm text-gray-200 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all min-w-[140px] sm:min-w-[160px] cursor-pointer"
+              <div className="flex items-center gap-2">
+                {/* Layout toggle: cards / table */}
+                <div className="flex rounded-lg border border-white/10 bg-dark-800 p-0.5">
+                  <button
+                    onClick={() => setResultsLayout('cards')}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      resultsLayout === 'cards'
+                        ? 'bg-primary-500/20 text-primary-400'
+                        : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                    title="Card view"
                   >
-                    {viewOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {resultsViewLabel(option)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={16}
-                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
-                  />
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button
+                    onClick={() => setResultsLayout('table')}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      resultsLayout === 'table'
+                        ? 'bg-primary-500/20 text-primary-400'
+                        : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                    title="Table view"
+                  >
+                    <Table2 size={16} />
+                  </button>
                 </div>
-              )}
+
+                {/* View selector */}
+                {viewOptions.length > 1 && (
+                  <div className="relative">
+                    <select
+                      value={activeView}
+                      onChange={(e) => setSelectedView(e.target.value)}
+                      className="appearance-none bg-dark-800 border border-white/10 rounded-lg px-3 sm:px-4 py-2 pr-8 sm:pr-10 text-sm text-gray-200 font-medium hover:bg-dark-700 hover:border-primary-500/50 focus:border-primary-500 focus:bg-dark-700 transition-all min-w-[140px] sm:min-w-[160px] cursor-pointer"
+                    >
+                      {viewOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {resultsViewLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={16}
+                      className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             {resultsCaption && (
               <p className="sticky left-0 z-20 text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4 w-[calc(100dvw-2rem)] sm:w-[calc(100dvw-3rem)]">
@@ -482,7 +512,7 @@ export function Dashboard() {
               </p>
             )}
 
-            <ResultsTable data={currentResults} title={resultsViewLabel(activeView)} onAnalyze={handleAnalyze} onShowChart={handleShowChart} />
+            <ResultsTable data={currentResults} title={resultsViewLabel(activeView)} onAnalyze={handleAnalyze} onShowChart={handleShowChart} layout={resultsLayout} />
 
             {/* Yahoo fallback notice */}
             {usedYahooFallback && !isScreening && (
