@@ -11,6 +11,7 @@ import type {
   ScreenResponse, 
   NewsResponse,
   CandlesResponse,
+  DirectionPrediction,
   HealthResponse,
   MarketClock,
   Filter,
@@ -135,6 +136,17 @@ export const apiClient = {
 
   async getCandles(symbol: string): Promise<CandlesResponse> {
     const response = await api.get(`/api/v1/candles/${encodeURIComponent(symbol)}`);
+    return response.data;
+  },
+
+  async getPrediction(
+    symbol: string,
+    opts: { expiry?: string; strike?: number; spot?: number } = {},
+    forceRefresh = false,
+  ): Promise<DirectionPrediction> {
+    const response = await api.get(`/api/v1/prediction/${encodeURIComponent(symbol)}`, {
+      params: { ...opts, force_refresh: forceRefresh },
+    });
     return response.data;
   },
 

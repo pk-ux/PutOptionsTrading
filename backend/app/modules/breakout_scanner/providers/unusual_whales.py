@@ -14,8 +14,11 @@ Endpoints used (all GET):
 - /api/screener/stocks                  bulk IV rank, net premium, P/C, earnings
 - /api/stock/{t}/flow-alerts            unusual options flow alerts
 - /api/stock/{t}/greek-exposure         dealer GEX (gamma/charm/vanna)
+- /api/stock/{t}/flow-per-expiry        premium per expiry, ask/bid split
 - /api/darkpool/{t}                     dark-pool block prints
+- /api/darkpool/{t}/price-levels        dark-pool volume per price level
 - /api/stock/{t}/insider-buy-sells      aggregate insider buy/sell notional
+- /api/insider/{t}/ticker-flow          insider flow by date, 10b5-1 split
 - /api/congress/recent-trades           congress trades (ticker filter)
 - /api/seasonality/{t}/monthly          monthly seasonality
 """
@@ -199,9 +202,33 @@ class UnusualWhalesProvider:
         rows = self._data(payload)
         return rows[-1] if rows else {}
 
+    def greek_exposure_series(self, ticker: str, timeframe: str = "1M") -> List[Dict[str, Any]]:
+        """Daily dealer greek exposure rows, oldest first.
+
+        Same endpoint as :meth:`greek_exposure` but keeps the whole series so
+        callers can measure the trend in dealer delta, not just today's level.
+        """
+        payload = self._get(f"/api/stock/{ticker}/greek-exposure", {"timeframe": timeframe})
+        return self._data(payload)
+
     def greek_exposure_by_strike(self, ticker: str) -> List[Dict[str, Any]]:
         """Per-strike dealer gamma exposure (for graded GEX + gamma walls)."""
         payload = self._get(f"/api/stock/{ticker}/greek-exposure/strike")
+        return self._data(payload)
+
+    def flow_per_expiry(self, ticker: str) -> List[Dict[str, Any]]:
+        """Options premium/volume per expiry, split by ask side and bid side."""
+        payload = self._get(f"/api/stock/{ticker}/flow-per-expiry")
+        return self._data(payload)
+
+    def darkpool_price_levels(self, ticker: str) -> Dict[str, Any]:
+        """Per-price-level dark-pool and lit stock volume for the latest session."""
+        payload = self._get(f"/api/darkpool/{ticker}/price-levels")
+        return payload if isinstance(payload, dict) else {}
+
+    def insider_ticker_flow(self, ticker: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Aggregated Form 4 insider flow by date, including the 10b5-1 split."""
+        payload = self._get(f"/api/insider/{ticker}/ticker-flow", {"limit": limit})
         return self._data(payload)
 
     def max_pain(self, ticker: str) -> Any:

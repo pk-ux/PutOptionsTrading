@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, Bot, CandlestickChart } from 'lucide-react';
 import type { OptionResult } from '@/types';
 import type { ResultsLayout } from '@/stores/useAppStore';
+import { PredictionPanel } from './PredictionPanel';
 
 interface ResultsTableProps {
   data: OptionResult[];
@@ -223,6 +224,7 @@ function ResultCard({ row, index, onAnalyze, onShowChart }: { row: OptionResult;
       </button>
       
       {expanded && (
+        <>
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mt-3 pt-3 border-t border-white/5">
           <div className="flex justify-between">
             <span className="text-gray-500">Daily Decay:</span>
@@ -265,6 +267,14 @@ function ResultCard({ row, index, onAnalyze, onShowChart }: { row: OptionResult;
             <span className="text-white">{formatPercent(iv)}</span>
           </div>
         </div>
+        <PredictionPanel
+          symbol={row.symbol}
+          expiry={row.expiry}
+          strike={row.strike}
+          spot={row.current_price}
+          expanded={expanded}
+        />
+        </>
       )}
     </div>
   );

@@ -9,6 +9,7 @@ from .health import router as health_router
 from .settings import router as settings_router
 from .screen import router as screen_router
 from .candles import router as candles_router
+from .direction import router as direction_router
 from .filters import router as filters_router
 from .trade_ideas import router as trade_ideas_router
 from .admin import router as admin_router
@@ -25,6 +26,7 @@ api_router.include_router(market_router, prefix="/api/v1", tags=["market"])
 api_router.include_router(settings_router, prefix="/api/v1", tags=["settings"])
 api_router.include_router(screen_router, prefix="/api/v1", tags=["screening"])
 api_router.include_router(candles_router, prefix="/api/v1", tags=["candles"])
+api_router.include_router(direction_router, prefix="/api/v1", tags=["direction"])
 api_router.include_router(filters_router, prefix="/api/v1", tags=["filters"])
 api_router.include_router(trade_ideas_router, prefix="/api/v1", tags=["trade-ideas"])
 api_router.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])

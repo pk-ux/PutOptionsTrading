@@ -185,6 +185,34 @@ export interface CandlesResponse {
   overlays: Partial<Record<OverlayKey, OverlayPoint[]>>;
 }
 
+// One normalized factor behind a directional read
+export interface DirectionSignal {
+  key: string;
+  label: string;
+  weight: number;
+  score: number | null; // -1..1, null when unavailable
+  detail: string;
+  available: boolean;
+}
+
+// Response from /api/v1/prediction/{symbol}
+export interface DirectionPrediction {
+  symbol: string;
+  as_of: string;
+  direction: 'BULLISH' | 'NEUTRAL' | 'BEARISH';
+  score: number; // -100..100
+  confidence: number; // 0..1
+  coverage: number; // 0..1
+  stability: 'stabilizing' | 'amplifying' | null;
+  gamma_regime: string | null;
+  signals: DirectionSignal[];
+  levels: Record<string, number | null>;
+  put_seller_note: string;
+  cached_at: string | null;
+  expires_at: string | null;
+  disclaimer: string;
+}
+
 // Health check response
 export interface HealthResponse {
   status: string;

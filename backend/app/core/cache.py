@@ -314,7 +314,7 @@ def clear_app_cache() -> int:
     """
     cache = get_cache()
     deleted = 0
-    for prefix in ("price:", "options:", "news:", "events:", "indicators:", "candles:"):
+    for prefix in ("price:", "options:", "news:", "events:", "indicators:", "candles:", "direction:"):
         deleted += cache.delete_by_prefix(prefix)
     return deleted
 
@@ -448,6 +448,24 @@ def get_cached_candles(symbol: str) -> Optional[Dict]:
 def set_cached_candles(symbol: str, data: Dict) -> None:
     """Cache daily candles + indicator overlays."""
     cache_set_json(make_cache_key("candles", _normalize_symbol(symbol)), data, ttl=CANDLES_TTL_SECONDS)
+
+
+# Flow/positioning inputs move intraday; 15 min keeps them current while
+# bounding Unusual Whales calls. Cached per symbol, not per option contract, so
+# several cards on one ticker share a single fetch.
+DIRECTION_TTL_SECONDS = 900
+
+
+def get_cached_direction_bundle(symbol: str) -> Optional[Dict]:
+    """Get the cached raw Unusual Whales bundle backing a direction read."""
+    return cache_get_json(make_cache_key("direction", _normalize_symbol(symbol)))
+
+
+def set_cached_direction_bundle(symbol: str, data: Dict) -> None:
+    """Cache the raw Unusual Whales bundle (scoring is recomputed per request)."""
+    cache_set_json(
+        make_cache_key("direction", _normalize_symbol(symbol)), data, ttl=DIRECTION_TTL_SECONDS
+    )
 
 
 def get_config_hash(config: dict) -> str:
